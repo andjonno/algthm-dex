@@ -1,0 +1,12 @@
+database:
+  username: root
+  password: 
+  host: localhost
+  database: algthm
+
+github:
+  authorization: dfa286e6de2d43501f85316682b4df4cd13f03ff
+
+logging:
+  crawl: crawler_logging.yaml
+  indexer: indexer_logging.yaml
