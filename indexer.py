@@ -138,7 +138,8 @@ if __name__ == "__main__":
         else:
             raise IndexerBootFailure("Could not start the feeder.")
 
-        print 'high and tight, dex running'
+        print '> run'
+        print
         feeder.feed_manager()
 
         cool_off(10)

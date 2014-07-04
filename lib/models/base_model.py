@@ -103,6 +103,7 @@ class BaseModel:
 
     # Adds a property to the model
     def __add_prop(self, key, value):
+        # TODO: update basemodel to allow for sql functions
         setattr(self, self.__hide(key), value)
         self.__update_properties(key)
 

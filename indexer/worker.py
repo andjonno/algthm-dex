@@ -56,7 +56,7 @@ class Worker(object):
             with Indexing(m['id'], m['url']) as idxr:
                 idxr.debug()
 
-            time.sleep(choice([4, 4.5, 5, 5.5]))
+            time.sleep(choice([5]))
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
         channel.basic_qos(prefetch_count=1)

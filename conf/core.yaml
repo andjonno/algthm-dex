@@ -1,6 +1,6 @@
 indexer:
   version: 0.0.2
-  workers: 16
+  workers: 4
   directory: /tmp/repositories
   welcome: conf/welcome
 
@@ -13,6 +13,7 @@ mq:
   feed_size: 1000
   smoothing_constant: 0.2
   max_retries: 3
+  max_sleep: 10
   connection:
     host: localhost
     username: guest
