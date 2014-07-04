@@ -46,7 +46,7 @@ class GitHub(object):
 
     def run(self):
         self.cursor = self.conn.cursor()
-        self.system = BaseModel('system', dict(id=1)).fetch()
+        self.system = BaseModel('system', dict(sys='default'), id_col='sys').fetch()
 
         while self.run:
             auth_header = {"Authorization": ("token {}".format(self.config.authorization))}

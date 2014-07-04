@@ -13,10 +13,12 @@ from subprocess import call
 from indexer.core.exceptions.indexer import IndexerDependencyFailure
 from indexer.core.exceptions.indexer import RepositoryCloneFailure
 from indexer.core.exceptions.indexer import StatisticsUnavailable
+from conf.config_loader import config_loader
 from core.repository_statistics import RepositoryStatistics
 from conf.logging.logger import logger
 from lib.utils.file import locate, md_to_txt
 from lib.utils.string import normalize_string
+from lib.models.base_model import BaseModel
 
 logger = logger.get_logger(__name__)
 CLOC_OUTPUT_FILE = 'cloc.yaml'
@@ -29,22 +31,28 @@ class Indexing:
     repo_stats = None
     name = None
 
-    def __init__(self, url, location):
+    def __init__(self, id, url):
         """
         Arguments,
             url - string, url of repository
             location - string, location on local file system
         """
+        self.id = id
         self.url = url
-        self.location = location
-        self.name = basename(location)
+        self.name = url.split('/')[-1]
+        self.location = join(config_loader.cfg.indexer['directory'], self.name)
+
+    def debug(self):
+        repo = BaseModel('repositories', dict(id=self.id))
+        repo.set('state', '2')
+        repo.save()
 
     def __enter__(self):
-        makedirs(self.location)
+        #makedirs(self.location)
         return self
 
     def __exit__(self, type, value, traceback):
-        rmtree(self.location)
+        #rmtree(self.location)
         self.repo = None
         self.repo_stats = None
         self.name = None

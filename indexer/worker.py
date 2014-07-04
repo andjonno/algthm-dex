@@ -11,6 +11,7 @@ to remove it from the rotation and black listed.
 
 import pika
 import time
+import json
 from random import choice
 from os import path
 from Queue import Empty
@@ -47,11 +48,14 @@ class Worker(object):
             host=config_loader.cfg.mq['connection']['host'])
         )
         channel = connection.channel()
-
         channel.queue_declare(queue=config_loader.cfg.mq['indexing_q_name'], durable=True)
 
         def callback(ch, method, properties, body):
             logger.info('Received - %s' % body)
+            m = json.loads(body)
+            with Indexing(m['id'], m['url']) as idxr:
+                idxr.debug()
+
             time.sleep(choice([4, 4.5, 5, 5.5]))
             ch.basic_ack(delivery_tag=method.delivery_tag)
 

@@ -20,6 +20,7 @@ from os import path
 from time import time, sleep
 from mysql.connector import Error
 from indexer.core.exceptions.indexer import IndexerBootFailure
+from indexer import status
 
 
 logger.setup_logging("indexer")
@@ -45,7 +46,7 @@ def initialize_workers(num_workers, target, daemon=True):
             sys.stdout.write('\r')
             sys.stdout.write('> %s workers initialized' % (i+1))
             sys.stdout.flush()
-            sleep(0.05)
+            sleep(config_loader.cfg.indexer['worker_cooling'])
 
         except RuntimeError:
             pass
@@ -88,7 +89,7 @@ if __name__ == "__main__":
     with open(config_loader.cfg.indexer['welcome']) as welcome:
         print welcome.read().replace('[version]', config_loader.cfg.indexer['version']).replace('[log_location]', path.join(path.dirname(path.abspath(__file__)), 'logs', 'indexer.log'))
 
-    print '> booting dex'
+    print '> booting DEX'
 
     try:
         print '> connecting to DB @ {} ..'.format(config_loader.cfg.database['host']),
@@ -109,8 +110,8 @@ if __name__ == "__main__":
             raise IndexerBootFailure("Could not connect to MQ.")
 
 
-        print 'letting connections establish.'
-        cool_off(config_loader.cfg.indexer['cool_off'])
+        print 'letting connections establish before testing.'
+        cool_off(config_loader.cfg.indexer['cooling'])
 
         print '> checking DB connection and schema ..',
         if test_db_connection(db_conn):
@@ -128,7 +129,7 @@ if __name__ == "__main__":
 
         workers = initialize_workers(config_loader.cfg.indexer['workers'], worker.target)
         print 'letting workers establish.'
-        cool_off(config_loader.cfg.indexer['cool_off'])
+        cool_off(config_loader.cfg.indexer['cooling'])
 
         print '> initialize feeder ..',
         feeder = Feeder(db_conn, mq_conn)
@@ -138,7 +139,7 @@ if __name__ == "__main__":
             raise IndexerBootFailure("Could not start the feeder.")
 
         print 'high and tight, dex running'
-        feeder.monitor_feed()
+        feeder.feed_manager()
 
         cool_off(10)
         feeder.report_failures()

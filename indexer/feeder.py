@@ -2,14 +2,19 @@
 Feeder retrieves urls from the repository store and adds them to the MQ when necessary.
 """
 
+import sys
 import time
 import pika
 from conf.config_loader import config_loader
-from lib.db.commands import connect
+from math import pow
+from lib.models.base_model import BaseModel
 from mysql.connector import Error
 from json import dumps
 from conf.logging.logger import logger
 from requests import get
+from indexer import status
+from datetime import datetime
+
 
 logger = logger.get_logger(__name__)
 
@@ -39,6 +44,7 @@ class Feeder:
     sleep = 10
     d = 0
     f = 0
+    error_sq = 0
 
     __last_feed = None
     __stop_feeding = False
@@ -52,6 +58,7 @@ class Feeder:
         self.mq_conn = mq_conn
         self.chan = self.mq_conn.channel()
         self.chan.queue_declare(queue=config_loader.cfg.mq['indexing_q_name'], durable=True)
+        self.system = None
 
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -76,11 +83,10 @@ class Feeder:
                 logger.info("Feeding MQ ..")
                 for (_id, url) in cursor:
                     ids.append(_id)
-                    self.add_to_queue(_id, url)
+                    self.__add_to_queue(_id, url)
                 self.__set_flag_processing(ids)
             else:
                 logger.info('No more repositories left to feed ..')
-                print '0 repositories left to feed .. letting workers finish.'
                 self.__stop_feeding = True
             cursor.close()
 
@@ -88,14 +94,17 @@ class Feeder:
             # TODO: implement error handling
             print err
 
-    def monitor_feed(self):
+    def feed_manager(self):
         """
         Monitors the rate of consumption of the queue, and determines the appropriate time to add more urls to the
         queue. Exponential smoothing is used here to assist in determining the appropriate time to repopulate the queue.
         """
+        complete = self.__is_complete()
+        if not complete:
+            self.__status_header()
         msgs = None
 
-        while 1:
+        while not complete:
             data = get('http://localhost:15672/api/queues/%2f/index_queue?'
                        'columns=backing_queue_status.avg_ack_egress_rate,messages',
                        auth=(self.MQ_USER, self.MQ_PASS)).json()
@@ -104,6 +113,7 @@ class Feeder:
             # Forecast the future egress val
             self.d = data['backing_queue_status']['avg_ack_egress_rate']
             if self.f:
+                self.error_sq = pow(self.d - self.f, 2)
                 self.f += self.FEED_SM_CONSTANT * (self.d - self.f)
             else:
                 self.f = self.d if self.d > 0 else 1
@@ -112,14 +122,15 @@ class Feeder:
                 if not self.__stop_feeding:
                     self.feed()
                     msgs = self.FEED_SIZE
-                else:
-                    print 'done!'
-                    break
 
             # determine sleep time required to get to buffer
-            self.sleep = (msgs - self.BUFFER) / self.f
+            self.sleep = (msgs - (self.BUFFER if msgs > self.BUFFER else 0)) / self.f
             self.sleep = 10 if self.sleep > 10 else self.sleep
+
+            self.__status()
             time.sleep(self.sleep)
+            complete = self.__is_complete()
+
 
     def report_failures(self):
         """
@@ -145,7 +156,7 @@ class Feeder:
         except Error as err:
             print err
 
-    def add_to_queue(self, id, url):
+    def __add_to_queue(self, id, url):
         """
         Adds the url to the queue
         """
@@ -161,4 +172,36 @@ class Feeder:
                 delivery_mode=2
             )
         )
+
+
+    def __is_complete(self):
+        if not self.system:
+            self.system = BaseModel('system', dict(sys='default'), id_col='sys')
+        self.system.fetch()
+        return (self.system.get('repository_count') - self.system.get('index_progress')) <= 0
+
+
+    def __status_header(self):
+        b_fmt = "|    \033[1;37m{0:20}\033[0m \033[1;37m{1:12}\033[0m \033[1;37m{2:12}\033[0m \033[1;37m{3:12}\033[0m "\
+                "\033[1;37m{4:12}\033[0m"
+        headers = b_fmt.format("Rate(m/s) D/F", "Error(sq)", "Progress(%)", "Repos rmg", "Time rmg(est)")
+        print headers
+
+
+    def __status(self):
+        """
+        Displays the indexing process.
+        """
+        progress = status.index_progress()
+        fmt = "|    {0:<20} {1:<12} {2:<12} {3:<12} {4:<12}"
+        system = progress[-1]
+        repos_rmg = system.get('repository_count') - system.get('index_progress')
+        try:
+            time_rmg = time.strftime('%H:%M:%S', time.gmtime(repos_rmg / self.f))
+        except Error:
+            time_rmg = "--:--:--"
+
+        data = fmt.format("{} / {}".format(round(self.d, 4), round(self.f, 4)), round(self.error_sq, 4),
+                          int(progress[0] * 100), repos_rmg, time_rmg)
+        print data
 

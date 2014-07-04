@@ -8,9 +8,11 @@ from lib.models.exception import ModelException
 
 class BaseModel:
 
-    def __init__(self, db_table, properties=dict()):
+    def __init__(self, db_table, properties=dict(), id_col='id'):
         self.connection = None
         self.__id = None
+        self.__id_col = id_col
+        self.properties = []
 
         self.set(properties)
         self.db_table = db_table
@@ -30,15 +32,15 @@ class BaseModel:
     """
     Add all properties in the given dictionary on the model.
     dict(
-      name='Jonathon',
-    	age = 23,
-    	gender = 'M'
+        name='Jonathon',
+        age = 23,
+        gender = 'M'
     )
     Two arguments eg, (key, value) may also be passed.
     Will store the name jonathon, under the property 'name'.
     """
     def set(self, properties=dict(), value=None):
-        # if value was given,
+        # if value was given, properties is actual a single key.
         if value:
             self.__add_prop(properties, value)
         else:
@@ -56,7 +58,7 @@ class BaseModel:
 
     # Saves the model to the database
     def save(self):
-        if self.get('id'):
+        if self.get(self.__id_col):
             return self.update()
         else:
             sql = "INSERT INTO {} {} VALUES {};".format(
@@ -70,14 +72,14 @@ class BaseModel:
 
     # Updates a model in the database, if not exist, the model will be inserted.
     def update(self):
-        if self.get('id'):
+        if self.get(self.__id_col):
             # create sql
             # Serialize properties and keys to form eg,
             # 	name="jonathon",age=23
             pairs = []
             for p in self.properties:
                 pairs.append('{}={}'.format(p, self.__sql_encapsulate_type(self.get(p))))
-            sql = "UPDATE {} SET {} WHERE id = {};".format(self.db_table, ', '.join(pairs), self.get('id'))
+            sql = "UPDATE {} SET {} WHERE {} = {};".format(self.db_table, ', '.join(pairs), self.__id_col, self.get('id'))
             self.__execute(sql)
 
             return self
@@ -87,8 +89,8 @@ class BaseModel:
 
     # Queries the database with the given id and binds the result to this model.
     def fetch(self):
-        if self.get('id'):
-            sql = "SELECT * FROM {} WHERE id = {} LIMIT 1;".format(self.db_table, self.get('id'))
+        if self.get(self.__id_col):
+            sql = "SELECT * FROM {} WHERE {} = '{}' LIMIT 1;".format(self.db_table, self.__id_col, self.get(self.__id_col))
             cursor = self.__execute(sql, close=False)
             result = self.__map_column_values(cursor, cursor.fetchone())
             self.set(result)

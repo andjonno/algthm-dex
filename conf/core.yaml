@@ -1,16 +1,17 @@
 indexer:
   version: 0.0.2
-  workers: 128
+  workers: 16
   directory: /tmp/repositories
   welcome: conf/welcome
 
   # ensures indexer is stable before continuing
-  cool_off: 5
+  cooling: 2
+  worker_cooling: 0.01
 
 mq:
   indexing_q_name: index_queue
   feed_size: 1000
-  smoothing_constant: 0.4
+  smoothing_constant: 0.2
   max_retries: 3
   connection:
     host: localhost
