@@ -1,18 +1,20 @@
 """
 worker.py
 
-Worker module does the work of pulling a repository from the given url. Once
-the repository is obtained, it is given to the indexer which carries out 
-various analysis on the codebase.
+Worker module does the work of pulling a repository from the given url. Once the repository is obtained, it is given to
+the indexer which carries out various analysis on the codebase.
 
-If any clone fails it is passed to the error handler where the appropriate 
-systems are informed. One possible error is a 404 from the request. If this 
-occurs, the repository should be striked. After a number of strikes, it may
-be necessary to remove it from the rotation and black listed.
+If any clone fails it is passed to the error handler where the appropriate systems are informed. One possible error is
+a 404 from the request. If this occurs, the repository should be striked. After a number of strikes, it may be necessary
+to remove it from the rotation and black listed.
 """
 
+import pika
+import time
+from random import choice
 from os import path
 from Queue import Empty
+from conf.config_loader import config_loader
 from conf.logging.logger import logger
 from indexer.indexing import Indexing
 
@@ -20,34 +22,40 @@ logger = logger.get_logger(__name__)
 TIMEOUT = 4
 
 
+def target():
+    """
+    boot function
+    """
+    Worker().run()
+
+
 class Worker(object):
 
-    queue = None
+    def __init__(self):
+        """
+        Downloads repositories with urls retrieved from the Queue
+        Arguments:
+            queue, Queue instance
+            repo_location, string location to store repository
+        """
+        self.queue = None
+        self.repo_location = config_loader.cfg.indexer['directory']
 
-    def __init__(self, queue, repo_location):
-        """Downloads repositories with urls retrieved from the Queue"""
-        self.queue = queue
-        self.repo_location = repo_location
-
-    # Method continues until terminated by dispatch
+    # Method continues until terminated by indexer
     def run(self):
-        while 1:
-            try:
-                # `get` returns a tuple, (num, 'url')
-                url = self.queue.get(True, TIMEOUT)[-1]
-                location = path.join(self.repo_location, url.split('/')[-1])
+        connection = pika.BlockingConnection(pika.ConnectionParameters(
+            host=config_loader.cfg.mq['connection']['host'])
+        )
+        channel = connection.channel()
 
-                # Let the indexer do its magic
-                with Indexing(url, location) as indexer:
-                    indexer.index()
+        channel.queue_declare(queue=config_loader.cfg.mq['indexing_q_name'], durable=True)
 
-                self.queue.task_done()
-            
-            except Empty:
-                # get from queue timeout
-                # TODO: handle timeout
-                pass
-            
-            except RuntimeError as e:
-                logger.error('{}'.format(e))
+        def callback(ch, method, properties, body):
+            logger.info('Received - %s' % body)
+            time.sleep(choice([4, 4.5, 5, 5.5]))
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+
+        channel.basic_qos(prefetch_count=1)
+        channel.basic_consume(callback, queue=config_loader.cfg.mq['indexing_q_name'])
+        channel.start_consuming()
 

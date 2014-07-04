@@ -3,19 +3,15 @@
 #
 # All application models should be a subclass of this base_model class.
 from conf.config_loader import ConfigLoader
-from core.db.commands import connect
-from core.models.exception import ModelException
+from lib.db.commands import connect
+from lib.models.exception import ModelException
 
-class BaseModel(object):
-
-    connection = None
-
-    # default propertie structures
-    db_table = None
-    properties = list()
-    __id = None
+class BaseModel:
 
     def __init__(self, db_table, properties=dict()):
+        self.connection = None
+        self.__id = None
+
         self.set(properties)
         self.db_table = db_table
 
@@ -31,20 +27,22 @@ class BaseModel(object):
             data[p] = self.get(p)
         return "Base Model - {}".format(data)
 
-    # Add all properties in the given dictionary on the model.
-    # dict(
-    #   name='Jonathon',
-    #	age = 23,
-    # 	gender = 'M'
-    # )
-    # Two arguments eg, (key, value) may also be passed.
-    # Will store the name jonathon, under the property 'name'.
+    """
+    Add all properties in the given dictionary on the model.
+    dict(
+      name='Jonathon',
+    	age = 23,
+    	gender = 'M'
+    )
+    Two arguments eg, (key, value) may also be passed.
+    Will store the name jonathon, under the property 'name'.
+    """
     def set(self, properties=dict(), value=None):
         # if value was given,
         if value:
             self.__add_prop(properties, value)
         else:
-            for (k,v) in properties.iteritems():
+            for (k, v) in properties.iteritems():
                 self.__add_prop(k, v)
         return self
 
@@ -114,8 +112,9 @@ class BaseModel(object):
         if key not in self.properties:
             self.properties.append(key)
 
-    # --------------------------------------------------------------------------
-    # sql helpers
+    """ ----------------------------------------------------------------------------------------------------------------
+        SQL HELPERS
+    """
 
     # serialize properties into sql format, eg (name, age, gender)
     def __sql_serialize_properties(self):

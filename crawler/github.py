@@ -7,8 +7,8 @@ algthm.repositories.
 
 from urlparse import urljoin
 from conf.config_loader import config_loader
-from core.models.base_model import BaseModel
-from core.db.commands import connect
+from lib.models.base_model import BaseModel
+from lib.db.commands import connect
 from conf.logging.logger import logger
 import requests
 import mysql.connector
@@ -17,11 +17,12 @@ logger = logger.get_logger(__name__)
 
 class GitHub(object):
 
-    API_BASE = 'https://api.github.com/'
-    URL_KEY = 'html_url'
+    GITHUB_API_BASE = 'https://api.github.com/'
+    REPO_NAME = 'full_name'
     ENDPOINTS = dict(
-        repositories=urljoin(API_BASE, 'repositories')
+        repositories=urljoin(GITHUB_API_BASE, 'repositories')
     )
+    GITHUB_BASE = 'https://github.com/'
 
     #	Flag to stop processing
     run = False
@@ -59,9 +60,9 @@ class GitHub(object):
     def process_response(self, response):
         if response.status_code != 404 or response.status_code != 500:
             repos = response.json()
-            if len(repos) != 0:
+            if len(repos):
                 for repo in repos:
-                    self.insert_to_db(repo[self.URL_KEY])
+                    self.insert_to_db(urljoin(self.GITHUB_BASE, repo[self.REPO_NAME]))
 
                 self.system.set('discovery_since', repos[-1]['id']).save()
             else:
