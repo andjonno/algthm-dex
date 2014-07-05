@@ -27,7 +27,8 @@ FEEDER_STMT = \
     "SELECT id, url FROM repositories WHERE id IN (SELECT id FROM repositories ORDER BY activity_rating DESC) AND " \
     "state = '{0}' AND indexed_on < NOW() AND error_count < {2} ORDER BY indexed_on ASC LIMIT {1};"
 UPDATE_STMT = "UPDATE repositories SET state = '{}' WHERE id IN ({});"
-SELECT_TO_REPORT = "SELECT id FROM repositories WHERE error_count >= {};"
+SELECT_TO_REPORT = "SELECT id, url FROM repositories WHERE error_count >= {};"
+INSERT_REPORTED = "INSERT INTO on_report (repo_id) VALUES {};"
 
 
 class Feeder:
@@ -129,7 +130,7 @@ class Feeder:
             if messages <= self.FEED_BUFFER:
                 if not self.__stop_feeding:
                     self.feed()
-                    messages = self.FEED_SIZE
+                    messages += self.FEED_SIZE
                 else:
                     sleep_remaining = messages / self.forecast
                     timeout = int(sleep_remaining / self.FEED_MAX_SLEEP)
@@ -145,13 +146,45 @@ class Feeder:
         # Queue is empty, workers are still occupied. Theoretically, the number of jobs/messages left is equal
         # to the number of workers. Therefore, compute the sleep time.
         time.sleep(self.WORKERS / self.forecast)
+        print
 
 
     def report_failures(self):
         """
         Method gets all repositories that failed to be indexed and places them on report.
         """
-        print 'reporting failures'
+        try:
+            cursor = self.db_conn.cursor()
+            cursor.execute(SELECT_TO_REPORT.format(self.MAX_RETRIES))
+            self.db_conn.commit()
+
+            # get failures and construct the insert statement
+            print
+            print '  {} failures reported'.format(cursor.rowcount)
+            failures = []
+            if cursor.rowcount > 0:
+                for _id, url in cursor:
+                    failures.append((_id, url))
+            items = ",".join("({})".format(i[0]) for i in failures)
+            cursor.close()
+
+            cursor = self.db_conn.cursor()
+            cursor.execute(INSERT_REPORTED.format(items))
+            self.db_conn.commit()
+            cursor.close()
+
+            b_fmt = "  \033[1;37m{0:8}\033[0m \033[1;37m{1:100}\033[0m"
+            fmt = "- {0:<8} {1:<100}"
+            headers = b_fmt.format("ID", "Url")
+            print headers
+            for _id, url in failures:
+                print fmt.format(_id, url)
+
+            print
+
+        except Error as err:
+            print err
+
 
 
     """ ----------------------------------------------------------------------------------------------------------------
@@ -191,7 +224,7 @@ class Feeder:
 
 
     def __status_header(self):
-        b_fmt = "     \033[1;37m{0:20}\033[0m \033[1;37m{1:12}\033[0m \033[1;37m{2:12}\033[0m \033[1;37m{3:12}\033[0m "\
+        b_fmt = "  \033[1;37m{0:18}\033[0m \033[1;37m{1:12}\033[0m \033[1;37m{2:12}\033[0m \033[1;37m{3:12}\033[0m "\
                 "\033[1;37m{4:12}\033[0m"
         headers = b_fmt.format("Rate(m/s) D/F", "Error(sq)", "Progress(%)", "Repos rmg", "Time rmg(est)")
         print headers
@@ -202,9 +235,9 @@ class Feeder:
         Displays the indexing process.
         """
         progress = status.index_progress()
-        fmt = "-    {0:<20} {1:<12} {2:<12} {3:<12} {4:<12}"
+        fmt = "- {0:<18} {1:<12} {2:<12} {3:<12} {4:<12}"
         system = progress[-1]
-        repos_rmg = system.get('repository_count') - system.get('index_progress')
+        repos_rmg = system.get('repository_count') - system.get('index_progress') - system.get('repository_error_count')
         try:
             time_rmg = time.strftime('%H:%M:%S', time.gmtime(repos_rmg / self.forecast))
         except ValueError:

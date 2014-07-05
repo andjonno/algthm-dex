@@ -6,6 +6,7 @@ repository. The results from this is then searchable for users.
 
 from os.path import join
 import pygit2
+import random
 from os import makedirs
 from shutil import rmtree
 from os.path import basename, isfile
@@ -43,8 +44,11 @@ class Indexing:
         self.location = join(config_loader.cfg.indexer['directory'], self.name)
 
     def debug(self):
-        repo = BaseModel('repositories', dict(id=self.id))
+        repo = BaseModel('repositories', dict(id=self.id)).fetch()
         repo.set('state', '2')
+        if random.random() * 100 > 50:
+            repo.set('error_count', repo.get('error_count') + 1)
+            repo.set('state', '0')
         repo.save()
 
     def __enter__(self):
