@@ -112,7 +112,7 @@ class BaseModel:
         return '__' + key
 
     def __update_properties(self, key):
-        if key not in self.properties:
+        if key not in self.properties and key != self.__id_col:
             self.properties.append(key)
 
     """ ----------------------------------------------------------------------------------------------------------------
@@ -132,7 +132,8 @@ class BaseModel:
 
     # Depending on the value type, if string it will be encapsulated with \"\"
     def __sql_encapsulate_type(self, value):
-        if type(value) == str or type(value) == unicode:
+        t = type(value)
+        if t != int:
             return '"{}"'.format(value)
         else:
             return value
