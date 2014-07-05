@@ -17,11 +17,7 @@ class ConfigLoader(object):
     def __init__(self):
         location = os.path.join(os.path.dirname(__file__), CONFIG_FILE)
         self.cfg = self.__load_config(location)
-
         self.cfg = BindConfig(self.cfg)
-        #self.database = BindConfig(self.cfg['database'])
-        #self.github = BindConfig(self.cfg['github'])
-
 
     def __load_config(self, location):
         with open(location) as file_obj:

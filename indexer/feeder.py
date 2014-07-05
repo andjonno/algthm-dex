@@ -2,21 +2,22 @@
 Feeder retrieves urls from the repository store and adds them to the MQ when necessary.
 """
 
-import sys
 import time
 import pika
 from conf.config_loader import config_loader
 from math import pow
-from lib.models.base_model import BaseModel
 from mysql.connector import Error
 from json import dumps
 from conf.logging.logger import logger
+from logging import getLogger, CRITICAL
 from requests import get
 from indexer import status
-from datetime import datetime
 
 
 logger = logger.get_logger(__name__)
+requests_logger = getLogger('requests')
+requests_logger.setLevel(CRITICAL)
+
 
 STATE = dict(
     waiting=0,
@@ -82,7 +83,6 @@ class Feeder:
             cursor = self.db_conn.cursor()
             cursor.execute(prepared)
             if cursor.rowcount > 0:
-                logger.info("Feeding MQ ..")
                 for (_id, url) in cursor:
                     items.append((_id, url))
                 ids = [i[0] for i in items]
@@ -90,7 +90,7 @@ class Feeder:
                 for _id, url in items:
                     self.__add_to_queue(_id, url)
             else:
-                logger.info('No more repositories left to feed ..')
+                logger.info('All repositories have been processed ..')
                 self.__stop_feeding = True
             cursor.close()
 
@@ -111,8 +111,6 @@ class Feeder:
         sleep_remaining  = 0
         # timeout will be incremented until it reaches `sleep_remaining/10`
         timeout = 1
-
-        self.__status_header()
 
         while timeout:
             data = get('http://localhost:15672/api/queues/%2f/index_queue?'
@@ -140,12 +138,14 @@ class Feeder:
             sleep = (messages - (self.FEED_BUFFER if messages > self.FEED_BUFFER else 0)) / self.forecast
             self.sleep = self.FEED_MAX_SLEEP if sleep > self.FEED_MAX_SLEEP else sleep
 
-            self.__status()
+            logger.info(self.__status(fmt=True))
             time.sleep(self.sleep)
 
         # Queue is empty, workers are still occupied. Theoretically, the number of jobs/messages left is equal
         # to the number of workers. Therefore, compute the sleep time.
-        time.sleep(self.WORKERS / self.forecast)
+        sleep = self.WORKERS / self.forecast
+        sleep = sleep if 0 < sleep < 100 else 10
+        time.sleep(sleep)
         print
 
 
@@ -173,19 +173,12 @@ class Feeder:
             self.db_conn.commit()
             cursor.close()
 
-            b_fmt = "  \033[1;37m{0:8}\033[0m \033[1;37m{1:100}\033[0m"
-            fmt = "- {0:<8} {1:<100}"
-            headers = b_fmt.format("ID", "Url")
-            print headers
+            fmt = "failed - {} {}"
             for _id, url in failures:
-                print fmt.format(_id, url)
-
-            print
+                logger.info(fmt.format(_id, url))
 
         except Error as err:
             print err
-
-
 
     """ ----------------------------------------------------------------------------------------------------------------
         HELPERS
@@ -205,12 +198,12 @@ class Feeder:
         except Error as err:
             print err
 
-    def __add_to_queue(self, id, url):
+    def __add_to_queue(self, _id, url):
         """
         Adds the url to the queue
         """
         payload = dumps(dict(
-            id=id,
+            id=_id,
             url=url
         ))
         self.chan.basic_publish(
@@ -222,33 +215,24 @@ class Feeder:
             )
         )
 
-
-    def __status_header(self):
-        b_fmt = "  \033[1;37m{0:18}\033[0m \033[1;37m{1:12}\033[0m \033[1;37m{2:12}\033[0m \033[1;37m{3:12}\033[0m "\
-                "\033[1;37m{4:12}\033[0m"
-        headers = b_fmt.format("Rate(m/s) D/F", "Error(sq)", "Progress(%)", "Repos rmg", "Time rmg(est)")
-        print headers
-
-
-    def __status(self):
-        """
-        Displays the indexing process.
-        """
-        progress = status.index_progress()
-        fmt = "- {0:<18} {1:<12} {2:<12} {3:<12} {4:<12}"
-        system = progress[-1]
+    def __status(self, fmt=False):
+        system = status.index_progress()
+        progress = int(system[0])
+        system = system[-1]
         repos_rmg = system.get('repository_count') - system.get('index_progress') - system.get('repository_error_count')
         try:
-            time_rmg = time.strftime('%H:%M:%S', time.gmtime(repos_rmg / self.forecast))
+            time_rmg = time.strftime('%H:%M:%S', time.gmtime(repos_rmg / (self.forecast if self.forecast > 0 else 1)))
         except ValueError:
             time_rmg = "--:--:--"
 
-        data = fmt.format("{} / {}".format(
-            round(self.demand, 4),
-            round(self.forecast, 4)),
-            round(self.error_sq, 4),
-            int(progress[0] * 100),
-            repos_rmg,
-            time_rmg)
-        print data
+        d = {
+            'Index Rate (messages/s) D/F': ("{}/{}".format(self.demand, self.forecast)),
+            'Error (sq)': self.error_sq,
+            'Progress (%)': progress,
+            'Repos Remaining': repos_rmg,
+            'Time Remaining(est)': time_rmg
+        }
+
+        return ', '.join("{}={}".format(i, d[i]) for i in d) if fmt else d
+
 

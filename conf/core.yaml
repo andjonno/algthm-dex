@@ -5,8 +5,10 @@ indexer:
   welcome: conf/welcome
 
   # ensures indexer is stable before continuing
-  cooling: 4
-  worker_cooling: 0.1
+  cooling: 0
+  worker_cooling: 0
+
+  debug: 0
 
 mq:
   indexing_q_name: index_queue

@@ -11,4 +11,4 @@ def index_progress():
     system = BaseModel('system', dict(sys='default'), id_col='sys').fetch()
     ip = system.get('index_progress')
     total = system.get('repository_count')
-    return (ip / (total * 1.0), system)
+    return (ip / (total * 1.0)) * 100, system

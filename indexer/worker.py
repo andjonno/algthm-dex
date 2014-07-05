@@ -51,7 +51,6 @@ class Worker(object):
         channel.queue_declare(queue=config_loader.cfg.mq['indexing_q_name'], durable=True)
 
         def callback(ch, method, properties, body):
-            logger.info('Received - %s' % body)
             m = json.loads(body)
             with Indexing(m['id'], m['url']) as idxr:
                 idxr.debug()

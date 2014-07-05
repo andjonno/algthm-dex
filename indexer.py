@@ -10,21 +10,22 @@ The worker is defined by worker.py which is the root execution of the process.
 
 from conf.config_loader import config_loader
 from multiprocessing import Process
-from indexer.feeder import Feeder
-from indexer import worker
+from indexer import worker, feeder
 from conf.logging.logger import logger
 from lib.db import commands
 import pika
 import sys
 from os import path
-from time import time, sleep
+from time import sleep
 from mysql.connector import Error
 from indexer.core.exceptions.indexer import IndexerBootFailure
-from indexer import status
+from logging import CRITICAL, getLogger
 
 
-logger.setup_logging("indexer")
+logger.setup_logging('indexer')
 logger = logger.get_logger(__name__)
+pika_logger = getLogger('pika')
+pika_logger.setLevel(CRITICAL)
 
 
 def initialize_workers(num_workers, target, daemon=True):
@@ -44,21 +45,23 @@ def initialize_workers(num_workers, target, daemon=True):
             workers.append(process)
 
             sys.stdout.write('\r')
-            sys.stdout.write('> %s workers initialized' % (i+1))
+            sys.stdout.write('> %s workers initialized' % (i + 1))
             sys.stdout.flush()
             sleep(config_loader.cfg.indexer['worker_cooling'])
 
         except RuntimeError:
             pass
 
-    print ' ..',
-    print 'ok'
-
+    print ' .. ok'
     return workers
 
 
 def test_db_connection(db_conn):
-    test_stmt = "SELECT count(*) FROM information_schema.tables WHERE table_schema = '{}';".format(config_loader.cfg.database['database'])
+    """
+    Tests that the db connection is alive and well.
+    """
+    test_stmt = "SELECT count(*) FROM information_schema.tables WHERE table_schema = '{}';".format(
+        config_loader.cfg.database['database'])
     curs = db_conn.cursor()
     is_good = None
     try:
@@ -72,18 +75,26 @@ def test_db_connection(db_conn):
 
 
 def test_mq_connection(mq_conn):
+    """
+    Tests that the mq connection is alive and well.
+    """
+    # TODO: implement mq conn test
     return True
 
 
-def cool_off(seconds=3, char='-'):
-    interval = seconds / 100
+def cool_off(duration=3, char='-'):
+    """
+    Throws up a progress bar for the given duration.
+    """
+    interval = duration / 100.0
     for i in range(101):
         sys.stdout.write('\r')
-        sys.stdout.write("\033[1;34m%-80s %d\033[0m" % (char*(int(i*0.82)), i))
+        sys.stdout.write("\033[1;34m%-82s %d\033[0m" % (char * (int(i * 0.82)), i))
         sys.stdout.flush()
         sleep(interval)
 
     print
+
 
 def prepare_db(db_conn):
     """
@@ -102,7 +113,10 @@ def prepare_db(db_conn):
 
 if __name__ == "__main__":
     with open(config_loader.cfg.indexer['welcome']) as welcome:
-        print welcome.read().replace('[version]', config_loader.cfg.indexer['version']).replace('[log_location]', path.join(path.dirname(path.abspath(__file__)), 'logs', 'indexer.log'))
+        print welcome.read().replace('[version]',
+            config_loader.cfg.indexer['version']).replace(
+                '[log_location]',
+                path.join(path.dirname(path.abspath(__file__)), 'logs', 'indexer.log'))
     print '> booting DEX'
 
     while 1:
@@ -114,7 +128,6 @@ if __name__ == "__main__":
             else:
                 raise IndexerBootFailure("Could not connect to DB.")
 
-
             print '> connecting to MQ @ {} ..'.format(config_loader.cfg.mq['connection']['host']),
             mq_conn = pika.BlockingConnection(pika.ConnectionParameters(
                 host=config_loader.cfg.mq['connection']['host']
@@ -123,7 +136,6 @@ if __name__ == "__main__":
                 print 'done'
             else:
                 raise IndexerBootFailure("Could not connect to MQ.")
-
 
             print 'letting connections establish before testing.'
             cool_off(config_loader.cfg.indexer['cooling'])
@@ -134,11 +146,9 @@ if __name__ == "__main__":
             else:
                 raise IndexerBootFailure("Algthm schema not defined in DB.")
 
-
             print '> preparing db ..',
             if prepare_db(db_conn):
                 print 'ok'
-
 
             print '> checking MQ connection ..',
             if test_mq_connection(mq_conn):
@@ -146,26 +156,22 @@ if __name__ == "__main__":
             else:
                 raise IndexerBootFailure("MQ connection failed.")
 
-
             workers = initialize_workers(config_loader.cfg.indexer['workers'], worker.target)
             print 'letting workers establish.'
             cool_off(config_loader.cfg.indexer['cooling'])
 
-
             print '> initialize feeder ..',
-            feeder = Feeder(db_conn, mq_conn)
-            if feeder:
+            fdr = feeder.Feeder(db_conn, mq_conn)
+            if fdr:
                 print 'ok'
             else:
                 raise IndexerBootFailure("Could not start the feeder.")
 
-
             print '> running ...'
-            print
-            feeder.feed_manager()
+            fdr.feed_manager()
 
             cool_off(10)
-            feeder.report_failures()
+            fdr.report_failures()
 
             # System terminal from here..
             print '> rebooting ..'
