@@ -28,7 +28,10 @@ def md_to_txt(file_obj):
     Given a markdown file, converts to html and extracts all pure text from that html.
     Most reliable way of getting valuable text from markdown file.
     """
-    text = file_obj.read()
-    html = markdown(text)
-    return ''.join(BeautifulSoup(html).findAll(text=True))
+    try:
+        text = file_obj.read()
+        html = markdown(text)
+        return ''.join(BeautifulSoup(html).findAll(text=True))
+    except Exception:
+        return ''
 

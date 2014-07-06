@@ -8,7 +8,7 @@ algthm.repositories.
 from urlparse import urljoin
 from conf.config_loader import config_loader
 from lib.models.base_model import BaseModel
-from lib.db.commands import connect
+from lib.db import get_connection
 from conf.logging.logger import logger
 import requests
 import mysql.connector
@@ -25,9 +25,9 @@ class GitHub(object):
     GITHUB_BASE = 'https://github.com/'
 
     #	Flag to stop processing
-    run = False
+    __run = False
 
-    # The repositories endpoint takes in a since paramter which it will return
+    # The repositories endpoint takes in a since parameter which it will return
     # results from this point. It refers to the repository ID. It is paginated
     # so we must call the API each time with the last repository ID we've seen.
     # This value is fetched from the `state` table algthm database as it is 
@@ -39,7 +39,7 @@ class GitHub(object):
 
     def __init__(self):
         self.config = config_loader.github
-        self.conn = connect()
+        self.conn = get_connection()
 
     def __exit__(self):
         self.cursor.close()
@@ -48,7 +48,7 @@ class GitHub(object):
         self.cursor = self.conn.cursor()
         self.system = BaseModel('system', dict(sys='default'), id_col='sys').fetch()
 
-        while self.run:
+        while self.__run:
             auth_header = {"Authorization": ("token {}".format(self.config.authorization))}
             res = requests.get(self.construct_url(), headers=auth_header)
             self.process_response(res)
@@ -67,7 +67,7 @@ class GitHub(object):
                 self.system.set('discovery_since', repos[-1]['id']).save()
             else:
                 #	Stop running on empty response
-                self.run = False
+                self.__run = False
 
         logger.info("\033[1;36mCrawling\033[0m {} repositories discovered ..".format(self.system.get('discovery_since')))
 

@@ -1,16 +1,14 @@
 """
-Indexer,
-takes a repository url and checks out on the local file system. This module then performs a number of analysis on the
-repository. The results from this is then searchable for users.
+Indexer, takes a repository url and checks out on the local file system. This module then performs a number of analysis
+on the repository. The results from this is then searchable for users.
 """
 
-from os.path import join
 import pygit2
-import random
 from os import makedirs
+from os.path import join, isfile
 from shutil import rmtree
-from os.path import basename, isfile
 from subprocess import call
+from indexer.feeder import STATE
 from indexer.core.exceptions.indexer import IndexerDependencyFailure
 from indexer.core.exceptions.indexer import RepositoryCloneFailure
 from indexer.core.exceptions.indexer import StatisticsUnavailable
@@ -21,6 +19,7 @@ from lib.utils.file import locate, md_to_txt
 from lib.utils.string import normalize_string
 from lib.models.base_model import BaseModel
 
+
 logger = logger.get_logger(__name__)
 CLOC_OUTPUT_FILE = 'cloc.yaml'
 
@@ -28,35 +27,33 @@ CLOC_OUTPUT_FILE = 'cloc.yaml'
 class Indexing:
     """Indexer analyses repositories and stores result in database"""
 
-    repo = None
-    repo_stats = None
-    name = None
 
-    def __init__(self, id, url):
+    def __init__(self, w_id, id, url):
         """
         Arguments,
             url - string, url of repository
             location - string, location on local file system
         """
+        self.w_id = w_id
         self.id = id
         self.url = url
         self.name = url.split('/')[-1]
-        self.location = join(config_loader.cfg.indexer['directory'], self.name)
+        self.location = join(config_loader.cfg.indexer['directory'], "{}_{}".format(self.name, self.w_id))
 
-    def debug(self):
-        repo = BaseModel('repositories', dict(id=self.id)).fetch()
-        repo.set('state', '2')
-        if random.random() * 100 > 50:
-            repo.set('error_count', repo.get('error_count') + 1)
-            repo.set('state', '0')
-        repo.save()
+        self.repo = None
+        self.repo_stats = None
+        self.name = None
 
     def __enter__(self):
-        #makedirs(self.location)
+        try:
+            rmtree(self.location)
+        except OSError:
+            pass # already removed
+        makedirs(self.location)
         return self
 
     def __exit__(self, type, value, traceback):
-        #rmtree(self.location)
+        rmtree(self.location)
         self.repo = None
         self.repo_stats = None
         self.name = None
@@ -65,7 +62,7 @@ class Indexing:
         """
         Downloads the repository to the file system.
         """
-        logger.info("\033[1;36mDownloading\033[0m {}".format(self.url))
+        logger.info("\033[1;36mCloning\033[0m {}".format(self.url))
         try:
             pygit2.clone_repository(self.url, self.location)
         except pygit2.GitError, err:
@@ -74,25 +71,32 @@ class Indexing:
 
     def index(self):
         """
-        Begin the indexing transaction.
+        Begin the indexing transaction. A number of steps are carried out once the repository has been cloned on to the
+        file system.
         """
-        self.load()
-        logger.info("\033[1;36mIndexing\033[0m {}".format(self.url))
+        repo_model = BaseModel('repositories', dict(id=self.id)).fetch()
+        logger.info("Beginning index on {}".format(self.url))
         try:
+            # Load onto filesystem
+            self.load()
+            # Generate repository statistics
             self.generate_stats()
-            self.repo_stats = RepositoryStatistics(join(self.location, CLOC_OUTPUT_FILE), self.name)
-            print self.repo_stats
-        except StatisticsUnavailable:
-            """proceed without stats"""
-            pass
+            # Extract Readme
+            self.generate_readme()
+            print self.readme
+            # If control reaches here, indexing was successful
+            repo_model.set(dict(state=STATE['complete'])).save()
+        except (RepositoryCloneFailure, StatisticsUnavailable, IndexerDependencyFailure) as err:
+            repo_model.set(dict(error_count=repo_model.get('error_count')+1, state='0')).save()
+        except OSError as err:
+            print "os error!"
 
-        self.generate_readme()
-        print self.readme
+        return True
 
-    """ ----------------------------------------------------------------------------------------------------------------
-        GENERATE_ METHODS
-        Routines below do various indexing operations.
-    """
+    #-------------------------------------------------------------------------------------------------------------------
+    #   GENERATE_ METHODS
+    #   Routines below do various indexing operations.
+    #-------------------------------------------------------------------------------------------------------------------
 
     def generate_stats(self):
         """
@@ -105,13 +109,16 @@ class Indexing:
         Throws StatisticsUnavailable, if repo contains no code
         """
         try:
-            call(["cloc", self.location, "--yaml", "--report-file={}".format(join(self.location, CLOC_OUTPUT_FILE))])
+            call(["cloc", self.location, "--yaml", "--report-file={}".format(join(self.location, CLOC_OUTPUT_FILE))],
+                 stdout=None)
         except OSError:
             raise IndexerDependencyFailure("`cloc` application was not found on this machine.")
 
         if not isfile(join(self.location, CLOC_OUTPUT_FILE)):
-            logger.error("Repository {} does not contain any code. Skipping stats..".format(self.name))
+            logger.error("'{}' does not contain any code. Skipping stats..".format(self.url))
             raise StatisticsUnavailable()
+        else:
+            self.repo_stats = RepositoryStatistics(join(self.location, CLOC_OUTPUT_FILE), self.name)
 
     def generate_readme(self):
         """
@@ -120,13 +127,13 @@ class Indexing:
             'Ruby on Rails is a "web framework" written in "ruby"'
         Similarly, works for the absolute case too: "rails web framework". Beautiful thing..
         """
-        readme = ""
+        rm = ""
         rms = locate("README*", self.location)
         for rm in rms:
             with open(rm) as file:
-                readme += normalize_string(md_to_txt(file))
+                rm += normalize_string(md_to_txt(file))
 
-        self.readme = readme
+        self.readme = rm
 
     def generate_licensing(self):
         """

@@ -2,9 +2,14 @@
 # database procedures such as deleting, updating and selecting.
 #
 # All application models should be a subclass of this base_model class.
-from conf.config_loader import ConfigLoader
-from lib.db.commands import connect
+from lib.db import get_connection
 from lib.models.exception import ModelException
+from mysql.connector.errors import Error
+from conf.logging.logger import logger
+
+
+logger = logger.get_logger(__name__)
+
 
 class BaseModel:
 
@@ -20,7 +25,6 @@ class BaseModel:
     def __del__(self):
         # Close and commit any pending database operations
         if self.connection:
-            self.connection.commit()
             self.connection.close()
 
     def __str__(self):
@@ -29,16 +33,10 @@ class BaseModel:
             data[p] = self.get(p)
         return "Base Model - {}".format(data)
 
-    """
-    Add all properties in the given dictionary on the model.
-    dict(
-        name='Jonathon',
-        age = 23,
-        gender = 'M'
-    )
-    Two arguments eg, (key, value) may also be passed.
-    Will store the name jonathon, under the property 'name'.
-    """
+    #   Add all properties in the given dictionary on the model.
+    #       dict(name='Jonathon', age = 23, gender = 'M')
+    #   Two arguments eg, (key, value) may also be passed.
+    #   Will store the name jonathon, under the property 'name'.
     def set(self, properties=dict(), value=None):
         # if value was given, properties is actual a single key.
         if value:
@@ -144,14 +142,18 @@ class BaseModel:
         field_names = [i[0] for i in cursor.description]
         return dict(zip(field_names, row))
 
+    def __close_db_connection(self):
+        self.connection.close()
+        self.connection = None
+
     def __execute(self, sql, close=True):
         if not self.connection:
-            self.connection = connect()
-
+            self.connection = get_connection()
         cursor = self.connection.cursor()
         cursor.execute(sql)
-        self.connection.commit()
+
         if close:
             cursor.close()
+            self.__close_db_connection()
 
         return cursor if not close else True

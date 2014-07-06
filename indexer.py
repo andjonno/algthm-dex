@@ -12,7 +12,7 @@ from conf.config_loader import config_loader
 from multiprocessing import Process
 from indexer import worker, feeder
 from conf.logging.logger import logger
-from lib.db import commands
+from lib.db import get_connection
 import pika
 import sys
 from os import path
@@ -20,6 +20,8 @@ from time import sleep
 from mysql.connector import Error
 from indexer.core.exceptions.indexer import IndexerBootFailure
 from logging import CRITICAL, getLogger
+from shutil import rmtree
+import indexer.main
 
 
 logger.setup_logging('indexer')
@@ -39,7 +41,7 @@ def initialize_workers(num_workers, target, daemon=True):
 
     for i in range(num_workers):
         try:
-            process = Process(target=target)
+            process = Process(target=target, args=(i+1,))
             process.daemon = daemon
             process.start()
             workers.append(process)
@@ -68,6 +70,7 @@ def test_db_connection(db_conn):
         curs.execute(test_stmt)
         row = curs.fetchone()
         is_good = row[0] != 0
+        curs.close()
     except Error as err:
         is_good = False
 
@@ -104,10 +107,21 @@ def prepare_db(db_conn):
     try:
         cursor = db_conn.cursor()
         cursor.execute("CALL prepare_index_session();")
+        cursor.close()
         ok = True
     except:
         pass
 
+    return ok
+
+
+def prepare_workspace(workspace):
+    ok = False
+    try:
+        rmtree(workspace)
+        ok = True
+    except OSError:
+        pass # already prepared
     return ok
 
 
@@ -121,8 +135,12 @@ if __name__ == "__main__":
 
     while 1:
         try:
+            print '> preparing workspace ..',
+            if prepare_workspace(config_loader.cfg.indexer['directory']):
+                print 'ok'
+
             print '> connecting to DB @ {} ..'.format(config_loader.cfg.database['host']),
-            db_conn = commands.connect()
+            db_conn = get_connection()
             if db_conn:
                 print 'done'
             else:
@@ -140,7 +158,7 @@ if __name__ == "__main__":
             print 'letting connections establish before testing.'
             cool_off(config_loader.cfg.indexer['cooling'])
 
-            print '> checking DB connection and schema ..',
+            print '> testing DB connection and schema ..',
             if test_db_connection(db_conn):
                 print 'ok'
             else:
@@ -150,7 +168,7 @@ if __name__ == "__main__":
             if prepare_db(db_conn):
                 print 'ok'
 
-            print '> checking MQ connection ..',
+            print '> testing MQ connection ..',
             if test_mq_connection(mq_conn):
                 print 'ok'
             else:
@@ -167,14 +185,16 @@ if __name__ == "__main__":
             else:
                 raise IndexerBootFailure("Could not start the feeder.")
 
+
+
             print '> running ...'
             fdr.feed_manager()
 
             cool_off(10)
             fdr.report_failures()
 
-            # System terminal from here..
             print '> rebooting ..'
+            db_conn.close()
             for p in enumerate(workers):
                 try:
                     p[-1].terminate()
@@ -183,6 +203,8 @@ if __name__ == "__main__":
 
         except IndexerBootFailure as e:
             print e
+            break
+
 
 
 

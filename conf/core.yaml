@@ -1,12 +1,12 @@
 indexer:
   version: 0.0.2
   workers: 64
-  directory: /tmp/repositories
+  directory: /Users/jon/tmp/repositories
   welcome: conf/welcome
 
   # ensures indexer is stable before continuing
-  cooling: 0
-  worker_cooling: 0
+  cooling: 2
+  worker_cooling: .1
 
   debug: 0
 
@@ -26,6 +26,8 @@ database:
   password: 
   host: localhost
   database: algthm
+  pool_name: algthm_pool
+  pool_size: 12
 
 github:
   authorization: dfa286e6de2d43501f85316682b4df4cd13f03ff

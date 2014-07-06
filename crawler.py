@@ -14,4 +14,4 @@ from conf.logging.logger import logger
 
 if __name__ == "__main__":
     logger.setup_logging("crawler")
-    github.run()
+    github.__run()

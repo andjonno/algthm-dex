@@ -20,9 +20,9 @@ requests_logger.setLevel(CRITICAL)
 
 
 STATE = dict(
-    waiting=0,
-    processing=1,
-    complete=2
+    waiting='0',
+    processing='1',
+    complete='2'
 )
 FEEDER_STMT = \
     "SELECT id, url FROM repositories WHERE id IN (SELECT id FROM repositories ORDER BY activity_rating DESC) AND " \
@@ -193,7 +193,6 @@ class Feeder:
         try:
             cursor = self.db_conn.cursor()
             cursor.execute(prepared)
-            self.db_conn.commit()
             cursor.close()
         except Error as err:
             print err

@@ -10,37 +10,33 @@ to remove it from the rotation and black listed.
 """
 
 import pika
-import time
 import json
-from random import choice
-from os import path
-from Queue import Empty
 from conf.config_loader import config_loader
 from conf.logging.logger import logger
-from indexer.indexing import Indexing
+from indexer.main import Indexing
 
 logger = logger.get_logger(__name__)
 TIMEOUT = 4
 
 
-def target():
+def target(id):
     """
     boot function
     """
-    Worker().run()
+    Worker(id).run()
 
 
 class Worker(object):
 
-    def __init__(self):
+    def __init__(self, _id):
         """
         Downloads repositories with urls retrieved from the Queue
         Arguments:
             queue, Queue instance
             repo_location, string location to store repository
         """
-        self.queue = None
-        self.repo_location = config_loader.cfg.indexer['directory']
+        self.id = _id
+
 
     # Method continues until terminated by indexer
     def run(self):
@@ -52,10 +48,9 @@ class Worker(object):
 
         def callback(ch, method, properties, body):
             m = json.loads(body)
-            with Indexing(m['id'], m['url']) as idxr:
-                idxr.debug()
+            with Indexing(self.id, m['id'], m['url']) as idxr:
+                idxr.index()
 
-            time.sleep(choice([2,3,5]))
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
         channel.basic_qos(prefetch_count=1)
