@@ -21,7 +21,7 @@ from mysql.connector import Error
 from indexer.core.exceptions.indexer import IndexerBootFailure
 from logging import CRITICAL, getLogger
 from shutil import rmtree
-from lib.models.base_model import BaseModel
+from indexer.core.models.session import Session
 
 
 logger.setup_logging('indexer')
@@ -116,7 +116,7 @@ def create_index_session(db_conn):
     except Error:
         pass
 
-    return BaseModel('index_sessions', dict(id=_id)).fetch()
+    return Session('index_sessions', dict(id=_id)).fetch()
 
 
 def prepare_workspace(workspace):
@@ -190,8 +190,6 @@ if __name__ == "__main__":
                 print 'ok'
             else:
                 raise IndexerBootFailure("Could not start the feeder.")
-
-
 
             print '> running ...'
             fdr.feed_manager()

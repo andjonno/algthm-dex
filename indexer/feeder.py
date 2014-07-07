@@ -11,7 +11,6 @@ from json import dumps
 from conf.logging.logger import logger
 from logging import getLogger, CRITICAL
 from requests import get
-from indexer import status
 
 
 logger = logger.get_logger(__name__)
@@ -89,6 +88,9 @@ class Feeder:
                 self.__set_flag_processing(ids)
                 for _id, url in items:
                     self.__add_to_queue(_id, url)
+
+                # update session object
+                self.session.set('feed', self.session.get('feed') + len(items)).save()
             else:
                 logger.info('All repositories have been processed ..')
                 self.__stop_feeding = True
@@ -146,6 +148,7 @@ class Feeder:
         sleep = self.WORKERS / self.forecast
         sleep = sleep if 0 < sleep < 100 else 10
         time.sleep(sleep)
+        self.session.set(dict(finish_time=time.strftime('%Y-%m-%d %H:%M:%S'))).save()
         print
 
 
@@ -215,20 +218,17 @@ class Feeder:
         )
 
     def __status(self, fmt=False):
-        system = status.index_progress()
-        progress = int(system[0])
-        system = system[-1]
-        repos_rmg = system.get('repository_count') - system.get('index_progress') - system.get('repository_error_count')
         try:
-            time_rmg = time.strftime('%H:%M:%S', time.gmtime(repos_rmg / (self.forecast if self.forecast > 0 else 1)))
+            time_rmg = time.strftime('%H:%M:%S', time.gmtime(self.session.repos_remaining() /
+                                                             (self.forecast if self.forecast > 0 else 1)))
         except ValueError:
             time_rmg = "--:--:--"
 
         d = {
             'Index Rate (messages/s) D/F': ("{}/{}".format(self.demand, self.forecast)),
             'Error (sq)': self.error_sq,
-            'Progress (%)': progress,
-            'Repos Remaining': repos_rmg,
+            'Progress (%)': self.session.progress() * 100,
+            'Repos Remaining': self.session.repos_remaining(),
             'Time Remaining(est)': time_rmg
         }
 
