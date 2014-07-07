@@ -18,6 +18,8 @@ class BaseModel:
         self.__id = None
         self.__id_col = id_col
         self.properties = []
+        self.changed = False
+        self.changes = []
 
         self.set(properties)
         self.db_table = db_table
@@ -37,13 +39,13 @@ class BaseModel:
     #       dict(name='Jonathon', age = 23, gender = 'M')
     #   Two arguments eg, (key, value) may also be passed.
     #   Will store the name jonathon, under the property 'name'.
-    def set(self, properties=dict(), value=None):
+    def set(self, properties=dict(), value=None, no_change=False):
         # if value was given, properties is actual a single key.
         if value:
-            self.__add_prop(properties, value)
+            self.__add_prop(properties, value, no_change)
         else:
             for (k, v) in properties.iteritems():
-                self.__add_prop(k, v)
+                self.__add_prop(k, v, no_change)
         return self
 
     def get(self, key):
@@ -56,7 +58,7 @@ class BaseModel:
 
     # Saves the model to the database
     def save(self):
-        if self.get(self.__id_col):
+        if self.get(self.__id_col) and self.changed:
             return self.update()
         else:
             sql = "INSERT INTO {} {} VALUES {};".format(
@@ -65,21 +67,23 @@ class BaseModel:
             self.__add_prop('id', cursor.lastrowid)
             cursor.close()
 
+            self.__changes_made()
 
         return self
 
     # Updates a model in the database, if not exist, the model will be inserted.
     def update(self):
-        if self.get(self.__id_col):
+        if self.get(self.__id_col) and self.changed:
             # create sql
             # Serialize properties and keys to form eg,
             # 	name="jonathon",age=23
             pairs = []
-            for p in self.properties:
+            for p in self.changes:
                 pairs.append('{}={}'.format(p, self.__sql_encapsulate_type(self.get(p))))
             sql = "UPDATE {} SET {} WHERE {} = {};".format(self.db_table, ', '.join(pairs), self.__id_col, self.get('id'))
             self.__execute(sql)
 
+            self.__changes_made()
             return self
         else:
             # new record, therefore insert
@@ -91,8 +95,9 @@ class BaseModel:
             sql = "SELECT * FROM {} WHERE {} = '{}' LIMIT 1;".format(self.db_table, self.__id_col, self.get(self.__id_col))
             cursor = self.__execute(sql, close=False)
             result = self.__map_column_values(cursor, cursor.fetchone())
-            self.set(result)
+            self.set(result, no_change=True)
             cursor.close()
+            self.__changes_made()
         else:
             raise ModelException("Cannot perform `fetch` without a model id.")
 
@@ -100,10 +105,30 @@ class BaseModel:
 
 
     # Adds a property to the model
-    def __add_prop(self, key, value):
+    def __add_prop(self, key, value, no_change=False):
+        """
+        Adds property to model. Updates the changes dict.
+        If property is already present, check if the value has actually changed. If it has, append to changes otherwise
+        if equal it is not an actual change.
+        """
+        if not no_change and ((key in self.properties and self.get(key) != value) or key not in self.properties):
+            self.__commit_changes(key)
         # TODO: update basemodel to allow for sql functions
         setattr(self, self.__hide(key), value)
         self.__update_properties(key)
+
+    def __commit_changes(self, key):
+        """
+        Adds the key to the changes list. This list is used when updating the database. Also sets the model state to
+        'changed'.
+        """
+        if key not in self.changes:
+            self.changes.append(key)
+            self.changed = True
+
+    def __changes_made(self):
+        self.changed = False
+        self.changes = []
 
     # Returns a key to be private
     def __hide(self, key):
@@ -119,13 +144,12 @@ class BaseModel:
 
     # serialize properties into sql format, eg (name, age, gender)
     def __sql_serialize_properties(self):
-        return '(' + ','.join(self.properties) + ')'
+        return '(' + ','.join(self.changes) + ')'
 
     def __sql_serialize_values(self):
         values = []
-        for p in self.properties:
+        for p in self.changes:
             values.append(self.__sql_encapsulate_type(self.get(p)))
-        print values
         return '(' + ','.join(str(values)) + ')'
 
     # Depending on the value type, if string it will be encapsulated with \"\"
