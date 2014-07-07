@@ -28,7 +28,7 @@ FEEDER_STMT = \
     "state = '{0}' AND indexed_on < NOW() AND error_count < {2} ORDER BY indexed_on ASC LIMIT {1};"
 UPDATE_STMT = "UPDATE repositories SET state = '{}' WHERE id IN ({});"
 SELECT_TO_REPORT = "SELECT id, comment FROM repositories WHERE error_count >= {};"
-INSERT_REPORTED = "INSERT INTO on_report (repo_id, comment) VALUES {};"
+INSERT_REPORTED = "INSERT INTO on_report (repo_id, session_id, comment) VALUES {};"
 
 
 class Feeder:
@@ -152,12 +152,13 @@ class Feeder:
             cursor.execute(SELECT_TO_REPORT.format(self.MAX_RETRIES))
 
             # get failures and construct the insert statement
-            print '> reporting {} failures'.format(cursor.rowcount)
+            session_id = self.session.get('id')
+            logger.info('Reporting {} failures for session#{}'.format(cursor.rowcount, session_id))
             failures = []
             if cursor.rowcount > 0:
                 for _id, comment in cursor:
                     failures.append((_id, comment))
-            items = ",".join("({},'{}')".format(i[0], i[1]) for i in failures)
+            items = ",".join("({},{}, '{}')".format(i[0], session_id, i[1]) for i in failures)
             cursor.close()
 
             cursor = self.db_conn.cursor()

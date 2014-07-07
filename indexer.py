@@ -178,8 +178,9 @@ if __name__ == "__main__":
             print '> testing MQ connection ..',
             if test_mq_connection(mq_conn):
                 print 'ok'
-                print '> purging MQ'
+                print '> purging MQ ..',
                 mq_conn.channel().queue_delete(queue=config_loader.cfg.mq['indexing_q_name'])
+                print 'ok'
             else:
                 raise IndexerBootFailure("MQ connection failed.")
 
