@@ -151,6 +151,7 @@ if __name__ == "__main__":
                 host=config_loader.cfg.mq['connection']['host']
             ))
             if mq_conn:
+                mq_conn.channel().queue_delete(queue=config_loader.cfg.mq['indexing_q_name'])
                 print 'done'
             else:
                 raise IndexerBootFailure("Could not connect to MQ.")
