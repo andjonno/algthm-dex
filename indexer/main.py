@@ -29,7 +29,6 @@ CLOC_OUTPUT_FILE = 'cloc.yaml'
 class Indexing:
     """Indexer analyses repositories and stores result in database"""
 
-
     def __init__(self, w_id, id, url):
         """
         Arguments,
@@ -81,7 +80,6 @@ class Indexing:
         file system.
         """
         repo_model = BaseModel('repositories', dict(id=self.id)).fetch()
-        logger.info("Beginning index on {}".format(self.url))
         self.__start_time = time.time()
         index_duration = 0
         try:
@@ -98,7 +96,7 @@ class Indexing:
                                 index_duration=index_duration)).save()
             logger.info("\033[1;32mCompleted\033[0m {} in {}".format(self.url, index_duration))
         except (RepositoryCloneFailure, StatisticsUnavailable, IndexerDependencyFailure) as err:
-            repo_model.set(dict(error_count=repo_model.get('error_count')+1, state='0')).save()
+            repo_model.set(dict(error_count=repo_model.get('error_count')+1, state='0', comment=err)).save()
         except OSError as err:
             logger.error(err)
 
@@ -127,7 +125,7 @@ class Indexing:
 
         if not isfile(join(self.location, CLOC_OUTPUT_FILE)):
             logger.info("\033[1;31mEmpty\033[0m {}, skipping ..".format(self.url))
-            raise StatisticsUnavailable()
+            raise StatisticsUnavailable("Empty repository")
         else:
             self.repo_stats = RepositoryStatistics(join(self.location, CLOC_OUTPUT_FILE), self.name)
 

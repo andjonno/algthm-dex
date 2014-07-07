@@ -42,7 +42,7 @@ def initialize_workers(num_workers, target, daemon=True):
 
     for i in range(num_workers):
         try:
-            process = Process(target=target, args=(i+1,))
+            process = Process(target=target, args=(i + 1,))
             process.daemon = daemon
             process.start()
             workers.append(process)
@@ -126,15 +126,15 @@ def prepare_workspace(workspace):
         rmtree(workspace)
         ok = True
     except OSError:
-        pass # already prepared
+        pass  # already prepared
     return ok
 
 
 if __name__ == "__main__":
     with open(config_loader.cfg.indexer['welcome']) as welcome:
         working_dir = config_loader.cfg.indexer['directory']
-        print welcome.read()\
-            .replace('[log_location]', path.join(path.dirname(path.abspath(__file__)), 'logs', 'indexer.log'))\
+        print welcome.read() \
+            .replace('[log_location]', path.join(path.dirname(path.abspath(__file__)), 'logs', 'indexer.log')) \
             .replace('[working_dir]', working_dir)
 
     print '> booting DEX'
@@ -224,7 +224,6 @@ if __name__ == "__main__":
                     p[-1].terminate()
                 except RuntimeError:
                     pass
-
 
         except IndexerBootFailure as e:
             print e

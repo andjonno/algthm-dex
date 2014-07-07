@@ -27,8 +27,8 @@ FEEDER_STMT = \
     "SELECT id, url FROM repositories WHERE id IN (SELECT id FROM repositories ORDER BY activity_rating DESC) AND " \
     "state = '{0}' AND indexed_on < NOW() AND error_count < {2} ORDER BY indexed_on ASC LIMIT {1};"
 UPDATE_STMT = "UPDATE repositories SET state = '{}' WHERE id IN ({});"
-SELECT_TO_REPORT = "SELECT id, url FROM repositories WHERE error_count >= {};"
-INSERT_REPORTED = "INSERT INTO on_report (repo_id) VALUES {};"
+SELECT_TO_REPORT = "SELECT id, comment FROM repositories WHERE error_count >= {};"
+INSERT_REPORTED = "INSERT INTO on_report (repo_id, comment) VALUES {};"
 
 
 class Feeder:
@@ -92,7 +92,7 @@ class Feeder:
                 # update session object
                 self.session.set('feed', self.session.get('feed') + len(items)).save()
             else:
-                logger.info('\033[1;37mAll repositories have been fed to MQ\033[0m ..')
+                logger.info('\033[1;37mAll repositories have been fed\033[0m')
                 self.__stop_feeding = True
             cursor.close()
 
@@ -150,32 +150,30 @@ class Feeder:
         try:
             cursor = self.db_conn.cursor()
             cursor.execute(SELECT_TO_REPORT.format(self.MAX_RETRIES))
-            self.db_conn.commit()
 
             # get failures and construct the insert statement
             print '> reporting {} failures'.format(cursor.rowcount)
             failures = []
             if cursor.rowcount > 0:
-                for _id, url in cursor:
-                    failures.append((_id, url))
-            items = ",".join("({})".format(i[0]) for i in failures)
+                for _id, comment in cursor:
+                    failures.append((_id, comment))
+            items = ",".join("({},'{}')".format(i[0], i[1]) for i in failures)
             cursor.close()
 
             cursor = self.db_conn.cursor()
             cursor.execute(INSERT_REPORTED.format(items))
-            self.db_conn.commit()
             cursor.close()
 
             fmt = "\033[1;31mReported\033[0m - {} {}"
-            for _id, url in failures:
-                logger.info(fmt.format(_id, url))
+            for _id, comment in failures:
+                logger.info(fmt.format(_id, comment))
 
         except Error as err:
             print err
 
-    """ ----------------------------------------------------------------------------------------------------------------
-        HELPERS
-    """
+    #-------------------------------------------------------------------------------------------------------------------
+    #   HELPERS
+    #-------------------------------------------------------------------------------------------------------------------
 
     def __set_flag_processing(self, ids):
         """
