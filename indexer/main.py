@@ -5,6 +5,7 @@ on the repository. The results from this is then searchable for users.
 
 import pygit2
 import re
+import time
 from os import makedirs, devnull
 from os.path import join, isfile
 from shutil import rmtree
@@ -46,6 +47,8 @@ class Indexing:
         self.name = None
         self.readme = None
 
+        self.__start_time = None
+
     def __enter__(self):
         try:
             rmtree(self.location)
@@ -65,7 +68,7 @@ class Indexing:
         """
         Downloads the repository to the file system.
         """
-        logger.info("\033[1;36mCloning\033[0m {}".format(self.url))
+        logger.info("\033[1;33mCloning\033[0m {}".format(self.url))
         try:
             pygit2.clone_repository(self.url, self.location)
         except pygit2.GitError, err:
@@ -79,6 +82,8 @@ class Indexing:
         """
         repo_model = BaseModel('repositories', dict(id=self.id)).fetch()
         logger.info("Beginning index on {}".format(self.url))
+        self.__start_time = time.time()
+        index_duration = 0
         try:
             # Load onto filesystem
             self.load()
@@ -86,15 +91,14 @@ class Indexing:
             self.do_stats()
             # Extract Readme
             self.do_readme()
-            logger.info(self.readme)
             # If control reaches here, indexing was successful
-            repo_model.set(dict(state=STATE['complete'])).save()
+            index_duration = time.strftime('%H:%M:%S', time.gmtime(time.time() - self.__start_time))
+            repo_model.set(dict(state=STATE['complete'], index_duration=index_duration)).save()
+            logger.info("\033[1;32mCompleted\033[0m {} in {}".format(self.url, index_duration))
         except (RepositoryCloneFailure, StatisticsUnavailable, IndexerDependencyFailure) as err:
             repo_model.set(dict(error_count=repo_model.get('error_count')+1, state='0')).save()
         except OSError as err:
             logger.error(err)
-
-        return True
 
     #-------------------------------------------------------------------------------------------------------------------
     #   GENERATE_ METHODS
@@ -114,13 +118,13 @@ class Indexing:
         try:
             dn = open(devnull, 'w')
             call(["cloc", self.location, "--yaml", "--report-file={}".format(join(self.location, CLOC_OUTPUT_FILE))],
-                 stdout=dn)
+                 stdout=dn, stderr=dn)
             dn.close()
         except OSError:
             raise IndexerDependencyFailure("`cloc` application was not found on this machine.")
 
         if not isfile(join(self.location, CLOC_OUTPUT_FILE)):
-            logger.info("\033[1;31m'{}'\033[0m does not contain any code. skipping ..".format(self.url))
+            logger.info("\033[1;31mEmpty\033[0m {}, skipping ..".format(self.url))
             raise StatisticsUnavailable()
         else:
             self.repo_stats = RepositoryStatistics(join(self.location, CLOC_OUTPUT_FILE), self.name)

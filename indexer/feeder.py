@@ -92,7 +92,7 @@ class Feeder:
                 # update session object
                 self.session.set('feed', self.session.get('feed') + len(items)).save()
             else:
-                logger.info('All repositories have been processed ..')
+                logger.info('\033[1;30mAll repositories have been fed to MQ\033[0m ..')
                 self.__stop_feeding = True
             cursor.close()
 
@@ -143,14 +143,7 @@ class Feeder:
             logger.info(self.__status(fmt=True))
             time.sleep(self.sleep)
 
-        # Queue is empty, workers are still occupied. Theoretically, the number of jobs/messages left is equal
-        # to the number of workers. Therefore, compute the sleep time.
-        sleep = self.WORKERS / self.forecast
-        sleep = sleep if 0 < sleep < 100 else 10
-        time.sleep(sleep)
         self.session.set(dict(finish_time=time.strftime('%Y-%m-%d %H:%M:%S'))).save()
-        print
-
 
     def report_failures(self):
         """
@@ -162,8 +155,7 @@ class Feeder:
             self.db_conn.commit()
 
             # get failures and construct the insert statement
-            print
-            print '  {} failures reported'.format(cursor.rowcount)
+            print '> reporting {} failures'.format(cursor.rowcount)
             failures = []
             if cursor.rowcount > 0:
                 for _id, url in cursor:
@@ -176,7 +168,7 @@ class Feeder:
             self.db_conn.commit()
             cursor.close()
 
-            fmt = "failed - {} {}"
+            fmt = "\033[1;31mReported\033[0m - {} {}"
             for _id, url in failures:
                 logger.info(fmt.format(_id, url))
 

@@ -8,19 +8,20 @@ process where each worker feeds repository urls fetched from the queue. These ar
 The worker is defined by worker.py which is the root execution of the process.
 """
 
+import pika
+import sys
+from shutil import rmtree
+from os import path
+from time import sleep
+from lib.utils.file import dir_empty
 from conf.config_loader import config_loader
 from multiprocessing import Process
 from indexer import worker, feeder
 from conf.logging.logger import logger
 from lib.db import get_connection
-import pika
-import sys
-from os import path
-from time import sleep
 from mysql.connector import Error
 from indexer.core.exceptions.indexer import IndexerBootFailure
 from logging import CRITICAL, getLogger
-from shutil import rmtree
 from indexer.core.models.session import Session
 
 
@@ -131,10 +132,12 @@ def prepare_workspace(workspace):
 
 if __name__ == "__main__":
     with open(config_loader.cfg.indexer['welcome']) as welcome:
-        print welcome.read().replace('[version]',
-            config_loader.cfg.indexer['version']).replace(
-                '[log_location]',
-                path.join(path.dirname(path.abspath(__file__)), 'logs', 'indexer.log'))
+        working_dir = config_loader.cfg.indexer['directory']
+        print welcome.read()\
+            .replace('[version]', config_loader.cfg.indexer['version'])\
+            .replace('[log_location]', path.join(path.dirname(path.abspath(__file__)), 'logs', 'indexer.log'))\
+            .replace('[working_dir]', working_dir)
+
     print '> booting DEX'
 
     while 1:
@@ -193,6 +196,14 @@ if __name__ == "__main__":
 
             print '> running ...'
             fdr.feed_manager()
+
+            # Presence of contents in the working directory denotes there are a number of workers still processes jobs.
+            # Wait for directory to be empty before continuing.
+            print '> awaiting workers to finish',
+            while not dir_empty(working_dir):
+                print '.',
+                sleep(5)
+            print 'done!'
 
             cool_off(10)
             fdr.report_failures()

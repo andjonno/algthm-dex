@@ -5,6 +5,7 @@ Some utilities for working with file and directory structures.
 from os import walk, listdir
 from os.path import abspath, join
 import fnmatch
+import re
 
 
 def locate(pattern, root_path):
@@ -19,6 +20,7 @@ def locate(pattern, root_path):
         for filename in fnmatch.filter(files, pattern):
             yield join(path, filename)
 
+
 def match_in_dir(r_exp, dre):
     """
     Match all f
@@ -29,3 +31,11 @@ def match_in_dir(r_exp, dre):
     except Exception as e:
         pass
     return path
+
+
+def dir_empty(dre, ignore_hidden=True):
+    ld = listdir(dre)
+    if ignore_hidden:
+        r = re.compile(r'^\.')
+        ld = [d for d in ld if not r.match(d)]
+    return len(ld) == 0
