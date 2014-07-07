@@ -21,7 +21,7 @@ from mysql.connector import Error
 from indexer.core.exceptions.indexer import IndexerBootFailure
 from logging import CRITICAL, getLogger
 from shutil import rmtree
-import indexer.main
+from lib.models.base_model import BaseModel
 
 
 logger.setup_logging('indexer')
@@ -99,20 +99,24 @@ def cool_off(duration=3, char='-'):
     print
 
 
-def prepare_db(db_conn):
+def create_index_session(db_conn):
     """
     Executes a storedproc to clean the database for this session.
     """
-    ok = False
+    _id = 0
     try:
         cursor = db_conn.cursor()
-        cursor.execute("CALL prepare_index_session();")
+        cursor.callproc('prepare_index_session')
+        cursor.fetchone()
+        for result in cursor.stored_results():
+            for row in result:
+                _id = row[0]
+                break
         cursor.close()
-        ok = True
-    except:
+    except Error:
         pass
 
-    return ok
+    return BaseModel('index_sessions', dict(id=_id)).fetch()
 
 
 def prepare_workspace(workspace):
@@ -165,9 +169,10 @@ if __name__ == "__main__":
             else:
                 raise IndexerBootFailure("Algthm schema not defined in DB.")
 
-            print '> preparing db ..',
-            if prepare_db(db_conn):
-                print 'ok'
+            print '> preparing indexing session ..',
+            session = create_index_session(db_conn)
+            if session:
+                print 'session id #{}'.format(session.get('id'))
 
             print '> testing MQ connection ..',
             if test_mq_connection(mq_conn):
@@ -180,7 +185,7 @@ if __name__ == "__main__":
             cool_off(config_loader.cfg.indexer['cooling'])
 
             print '> initialize feeder ..',
-            fdr = feeder.Feeder(db_conn, mq_conn)
+            fdr = feeder.Feeder(session, db_conn, mq_conn)
             if fdr:
                 print 'ok'
             else:

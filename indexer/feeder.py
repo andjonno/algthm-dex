@@ -53,16 +53,16 @@ class Feeder:
     __stop_feeding = False
 
 
-    def __init__(self, db_conn, mq_conn):
+    def __init__(self, session, db_conn, mq_conn):
         """
         Establish connection with database and MQ
         """
+        self.session = session
         self.db_conn = db_conn
         self.mq_conn = mq_conn
         self.chan = self.mq_conn.channel()
         self.chan.queue_declare(queue=config_loader.cfg.mq['indexing_q_name'], durable=True)
         self.system = None
-
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.mq_conn.close()
