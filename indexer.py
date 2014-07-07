@@ -157,7 +157,6 @@ if __name__ == "__main__":
                 host=config_loader.cfg.mq['connection']['host']
             ))
             if mq_conn:
-                mq_conn.channel().queue_delete(queue=config_loader.cfg.mq['indexing_q_name'])
                 print 'done'
             else:
                 raise IndexerBootFailure("Could not connect to MQ.")
@@ -179,6 +178,8 @@ if __name__ == "__main__":
             print '> testing MQ connection ..',
             if test_mq_connection(mq_conn):
                 print 'ok'
+                print '> purging MQ'
+                mq_conn.channel().queue_delete(queue=config_loader.cfg.mq['indexing_q_name'])
             else:
                 raise IndexerBootFailure("MQ connection failed.")
 
@@ -193,6 +194,9 @@ if __name__ == "__main__":
             else:
                 raise IndexerBootFailure("Could not start the feeder.")
 
+            #-----------------------------------------------------------------------------------------------------------
+            #   All Checks Complete - Run
+            #-----------------------------------------------------------------------------------------------------------
             print '> running ...'
             fdr.feed_manager()
 
@@ -210,15 +214,17 @@ if __name__ == "__main__":
             session.set(dict(finish_time=strftime('%Y-%m-%d %H:%M:%S'))).save()
             print '> session finished'
             print session
+
             break
+            db_conn.close()
 
             print '> rebooting ..'
-            db_conn.close()
             for p in enumerate(workers):
                 try:
                     p[-1].terminate()
                 except RuntimeError:
                     pass
+
 
         except IndexerBootFailure as e:
             print e
