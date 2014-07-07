@@ -1,5 +1,4 @@
 indexer:
-  version: 0.0.2
   workers: 64
   directory: /Users/jon/tmp/repositories
   welcome: conf/welcome

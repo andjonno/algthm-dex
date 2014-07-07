@@ -134,7 +134,6 @@ if __name__ == "__main__":
     with open(config_loader.cfg.indexer['welcome']) as welcome:
         working_dir = config_loader.cfg.indexer['directory']
         print welcome.read()\
-            .replace('[version]', config_loader.cfg.indexer['version'])\
             .replace('[log_location]', path.join(path.dirname(path.abspath(__file__)), 'logs', 'indexer.log'))\
             .replace('[working_dir]', working_dir)
 
