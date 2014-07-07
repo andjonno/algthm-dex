@@ -86,7 +86,7 @@ class Indexing:
             self.do_stats()
             # Extract Readme
             self.do_readme()
-            print self.readme
+            logger.info(self.readme)
             # If control reaches here, indexing was successful
             repo_model.set(dict(state=STATE['complete'])).save()
         except (RepositoryCloneFailure, StatisticsUnavailable, IndexerDependencyFailure) as err:
@@ -120,7 +120,7 @@ class Indexing:
             raise IndexerDependencyFailure("`cloc` application was not found on this machine.")
 
         if not isfile(join(self.location, CLOC_OUTPUT_FILE)):
-            logger.error("'{}' does not contain any code. Skipping stats..".format(self.url))
+            logger.info("\033[1;31m'{}'\033[0m does not contain any code. skipping ..".format(self.url))
             raise StatisticsUnavailable()
         else:
             self.repo_stats = RepositoryStatistics(join(self.location, CLOC_OUTPUT_FILE), self.name)
@@ -132,12 +132,15 @@ class Indexing:
             'Ruby on Rails is a "web framework" written in "ruby"'
         Similarly, works for the absolute case too: "rails web framework". Beautiful thing..
         """
-        r = re.compile(r'^README', re.IGNORECASE)
-        readme_loc = match_in_dir(r, self.location)[0]
+        try:
+            r = re.compile(r'^README', re.IGNORECASE)
+            readme_loc = match_in_dir(r, self.location)[0]
 
-        f = open(readme_loc, 'r')
-        self.readme = normalize_string(f.read())
-        f.close()
+            f = open(readme_loc, 'r')
+            self.readme = normalize_string(f.read())
+            f.close()
+        except Exception:
+            pass # no readme
 
     def do_licensing(self):
         """
