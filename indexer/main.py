@@ -4,7 +4,8 @@ on the repository. The results from this is then searchable for users.
 """
 
 import pygit2
-from os import makedirs
+import re
+from os import makedirs, devnull
 from os.path import join, isfile
 from shutil import rmtree
 from subprocess import call
@@ -15,7 +16,7 @@ from indexer.core.exceptions.indexer import StatisticsUnavailable
 from conf.config_loader import config_loader
 from core.repository_statistics import RepositoryStatistics
 from conf.logging.logger import logger
-from lib.utils.file import locate, md_to_txt
+from lib.utils.file import match_in_dir
 from lib.utils.string import normalize_string
 from lib.models.base_model import BaseModel
 
@@ -43,6 +44,7 @@ class Indexing:
         self.repo = None
         self.repo_stats = None
         self.name = None
+        self.readme = None
 
     def __enter__(self):
         try:
@@ -57,6 +59,7 @@ class Indexing:
         self.repo = None
         self.repo_stats = None
         self.name = None
+        self.readme = None
 
     def load(self):
         """
@@ -80,16 +83,16 @@ class Indexing:
             # Load onto filesystem
             self.load()
             # Generate repository statistics
-            self.generate_stats()
+            self.do_stats()
             # Extract Readme
-            self.generate_readme()
+            self.do_readme()
             print self.readme
             # If control reaches here, indexing was successful
             repo_model.set(dict(state=STATE['complete'])).save()
         except (RepositoryCloneFailure, StatisticsUnavailable, IndexerDependencyFailure) as err:
             repo_model.set(dict(error_count=repo_model.get('error_count')+1, state='0')).save()
         except OSError as err:
-            print "os error!"
+            logger.error(err)
 
         return True
 
@@ -98,7 +101,7 @@ class Indexing:
     #   Routines below do various indexing operations.
     #-------------------------------------------------------------------------------------------------------------------
 
-    def generate_stats(self):
+    def do_stats(self):
         """
         Method calls a subprocess 'cloc' to do some stats on the directory. The result of this is saved to
         `CLOC_OUTPUT_FILE` in the repository location. The results are in yaml format, which will be later read. `cloc`
@@ -109,8 +112,10 @@ class Indexing:
         Throws StatisticsUnavailable, if repo contains no code
         """
         try:
+            dn = open(devnull, 'w')
             call(["cloc", self.location, "--yaml", "--report-file={}".format(join(self.location, CLOC_OUTPUT_FILE))],
-                 stdout=None)
+                 stdout=dn)
+            dn.close()
         except OSError:
             raise IndexerDependencyFailure("`cloc` application was not found on this machine.")
 
@@ -120,22 +125,21 @@ class Indexing:
         else:
             self.repo_stats = RepositoryStatistics(join(self.location, CLOC_OUTPUT_FILE), self.name)
 
-    def generate_readme(self):
+    def do_readme(self):
         """
         Searchable text currently includes README files. They contain the rundown of the codebase; we're primarily
         interested in its purpose. A user search for "ruby web framework", could match a line in the rails readme:
             'Ruby on Rails is a "web framework" written in "ruby"'
         Similarly, works for the absolute case too: "rails web framework". Beautiful thing..
         """
-        rm = ""
-        rms = locate("README*", self.location)
-        for rm in rms:
-            with open(rm) as file:
-                rm += normalize_string(md_to_txt(file))
+        r = re.compile(r'^README', re.IGNORECASE)
+        readme_loc = match_in_dir(r, self.location)[0]
 
-        self.readme = rm
+        f = open(readme_loc, 'r')
+        self.readme = normalize_string(f.read())
+        f.close()
 
-    def generate_licensing(self):
+    def do_licensing(self):
         """
         License information may be something to display in the application results. This would be useful for
         organisations who are conscientious of the open source projects they use in their products or development.

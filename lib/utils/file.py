@@ -2,12 +2,9 @@
 Some utilities for working with file and directory structures.
 """
 
-from os import walk
+from os import walk, listdir
 from os.path import abspath, join
-from fnmatch import filter
-from re import sub
-from bs4 import BeautifulSoup
-from markdown import markdown
+import fnmatch
 
 
 def locate(pattern, root_path):
@@ -18,20 +15,17 @@ def locate(pattern, root_path):
         root_path, string, search structure
     Returns a generator.
     """
-    for path, dirs, files in walk(abspath(root_path)):
-        for filename in filter(files, pattern):
+    for path, dirs, files in walk(abspath(root_path), topdown=True):
+        for filename in fnmatch.filter(files, pattern):
             yield join(path, filename)
 
-
-def md_to_txt(file_obj):
+def match_in_dir(r_exp, dre):
     """
-    Given a markdown file, converts to html and extracts all pure text from that html.
-    Most reliable way of getting valuable text from markdown file.
+    Match all f
     """
+    path = []
     try:
-        text = file_obj.read()
-        html = markdown(text)
-        return ''.join(BeautifulSoup(html).findAll(text=True))
-    except Exception:
-        return ''
-
+        path = [join(dre, f) for f in filter(r_exp.match, listdir(dre))]
+    except Exception as e:
+        pass
+    return path
