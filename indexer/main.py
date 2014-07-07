@@ -93,7 +93,9 @@ class Indexing:
             self.do_readme()
             # If control reaches here, indexing was successful
             index_duration = time.strftime('%H:%M:%S', time.gmtime(time.time() - self.__start_time))
-            repo_model.set(dict(state=STATE['complete'], index_duration=index_duration)).save()
+            repo_model.set(dict(state=STATE['complete'],
+                                indexed_on=time.strftime('%Y-%m-%d %H:%M:%S'),
+                                index_duration=index_duration)).save()
             logger.info("\033[1;32mCompleted\033[0m {} in {}".format(self.url, index_duration))
         except (RepositoryCloneFailure, StatisticsUnavailable, IndexerDependencyFailure) as err:
             repo_model.set(dict(error_count=repo_model.get('error_count')+1, state='0')).save()

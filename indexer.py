@@ -12,7 +12,7 @@ import pika
 import sys
 from shutil import rmtree
 from os import path
-from time import sleep
+from time import sleep, strftime
 from lib.utils.file import dir_empty
 from conf.config_loader import config_loader
 from multiprocessing import Process
@@ -121,7 +121,7 @@ def create_index_session(db_conn):
 
 
 def prepare_workspace(workspace):
-    ok = False
+    ok = True
     try:
         rmtree(workspace)
         ok = True
@@ -207,6 +207,11 @@ if __name__ == "__main__":
 
             cool_off(10)
             fdr.report_failures()
+
+            session.set(dict(finish_time=strftime('%Y-%m-%d %H:%M:%S'))).save()
+            print '> session finished'
+            print session
+            break
 
             print '> rebooting ..'
             db_conn.close()

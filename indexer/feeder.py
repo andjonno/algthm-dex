@@ -92,7 +92,7 @@ class Feeder:
                 # update session object
                 self.session.set('feed', self.session.get('feed') + len(items)).save()
             else:
-                logger.info('\033[1;30mAll repositories have been fed to MQ\033[0m ..')
+                logger.info('\033[1;37mAll repositories have been fed to MQ\033[0m ..')
                 self.__stop_feeding = True
             cursor.close()
 
@@ -142,8 +142,6 @@ class Feeder:
 
             logger.info(self.__status(fmt=True))
             time.sleep(self.sleep)
-
-        self.session.set(dict(finish_time=time.strftime('%Y-%m-%d %H:%M:%S'))).save()
 
     def report_failures(self):
         """
