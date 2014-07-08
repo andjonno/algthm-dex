@@ -13,17 +13,16 @@ import sys
 from shutil import rmtree
 from os import path
 from time import sleep, strftime
-from lib.utils.file import dir_empty
+from algthm.utils.file import dir_empty
 from conf.config_loader import config_loader
 from multiprocessing import Process
 from indexer import worker, feeder
 from conf.logging.logger import logger
-from lib.db import get_connection
+from algthm.db import get_connection
 from mysql.connector import Error
 from indexer.core.exceptions.indexer import IndexerBootFailure
 from logging import CRITICAL, getLogger
 from indexer.core.models.session import Session
-
 
 logger.setup_logging('indexer')
 logger = logger.get_logger(__name__)

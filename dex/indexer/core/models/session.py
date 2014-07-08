@@ -3,10 +3,10 @@ IndexSession model.
 """
 
 
-from lib.models.base_model import BaseModel
+from algthm.model import Base
 
 
-class Session(BaseModel):
+class Session(Base):
 
     def progress(self):
         total = self.get('total')

@@ -17,9 +17,9 @@ from indexer.core.exceptions.indexer import StatisticsUnavailable
 from conf.config_loader import config_loader
 from core.repository_statistics import RepositoryStatistics
 from conf.logging.logger import logger
-from lib.utils.file import match_in_dir
-from lib.utils.string import normalize_string
-from lib.models.base_model import BaseModel
+from algthm.utils.file import match_in_dir
+from algthm.utils.string import normalize_string
+from algthm.model import Base
 
 
 logger = logger.get_logger(__name__)
@@ -79,7 +79,7 @@ class Indexing:
         Begin the indexing transaction. A number of steps are carried out once the repository has been cloned on to the
         file system.
         """
-        repo_model = BaseModel('repositories', dict(id=self.id)).fetch()
+        repo_model = Base('repositories', dict(id=self.id)).fetch()
         self.__start_time = time.time()
         index_duration = 0
         try:
