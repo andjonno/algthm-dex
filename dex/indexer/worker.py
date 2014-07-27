@@ -11,9 +11,9 @@ to remove it from the rotation and black listed.
 
 import pika
 import json
-from conf.config_loader import config_loader
-from conf.logging.logger import logger
-from indexer.main import Indexing
+from dex.conf.config_loader import config_loader
+from dex.conf.logging.logger import logger
+from dex.indexer.main import Indexing
 
 logger = logger.get_logger(__name__)
 TIMEOUT = 4

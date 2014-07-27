@@ -4,11 +4,11 @@ Feeder retrieves urls from the repository store and adds them to the MQ when nec
 
 import time
 import pika
-from conf.config_loader import config_loader
+from dex.conf.config_loader import config_loader
 from math import pow
 from mysql.connector import Error
 from json import dumps
-from conf.logging.logger import logger
+from dex.conf.logging.logger import logger
 from logging import getLogger, CRITICAL
 from requests import get
 
@@ -92,7 +92,7 @@ class Feeder:
                 # update session object
                 self.session.set('feed', self.session.get('feed') + len(items)).save()
             else:
-                logger.info('\033[1;37mAll repositories have been fed\033[0m')
+                logger.info('\033[1;37mFeeding exhausted.\033[0m')
                 self.__stop_feeding = True
             cursor.close()
 
@@ -153,21 +153,21 @@ class Feeder:
 
             # get failures and construct the insert statement
             session_id = self.session.get('id')
-            logger.info('Reporting {} failures for session#{}'.format(cursor.rowcount, session_id))
             failures = []
             if cursor.rowcount > 0:
+                logger.info('Reporting {} failures for session#{}'.format(cursor.rowcount, session_id))
                 for _id, comment in cursor:
                     failures.append((_id, comment))
-            items = ",".join("({},{}, '{}')".format(i[0], session_id, i[1]) for i in failures)
-            cursor.close()
+                items = ",".join("({},{}, '{}')".format(i[0], session_id, i[1]) for i in failures)
+                cursor.close()
 
-            cursor = self.db_conn.cursor()
-            cursor.execute(INSERT_REPORTED.format(items))
-            cursor.close()
+                cursor = self.db_conn.cursor()
+                cursor.execute(INSERT_REPORTED.format(items))
+                cursor.close()
 
-            fmt = "\033[1;31mReported\033[0m - {} {}"
-            for _id, comment in failures:
-                logger.info(fmt.format(_id, comment))
+                fmt = "\033[1;31mReported\033[0m - {} {}"
+                for _id, comment in failures:
+                    logger.info(fmt.format(_id, comment))
 
         except Error as err:
             print err

@@ -129,12 +129,13 @@ def prepare_workspace(workspace):
     return ok
 
 
-if __name__ == "__main__":
+def main():
     with open(config_loader.cfg.indexer['welcome']) as welcome:
         working_dir = config_loader.cfg.indexer['directory']
-        print welcome.read() \
-            .replace('[log_location]', path.join(path.dirname(path.abspath(__file__)), 'logs', 'indexer.log')) \
-            .replace('[working_dir]', working_dir)
+
+        print '\033[1;34m{}\033[0m'.format(welcome.read() \
+        .replace('[log_location]', path.join(path.dirname(path.abspath(__file__)), 'logs', 'indexer.log')) \
+        .replace('[working_dir]', working_dir))
 
     print '> booting DEX'
 
@@ -202,7 +203,7 @@ if __name__ == "__main__":
 
             # Presence of contents in the working directory denotes there are a number of workers still processes jobs.
             # Wait for directory to be empty before continuing.
-            print '> awaiting workers to finish',
+            print '> finalising ..',
             while not dir_empty(working_dir):
                 print '.',
                 sleep(5)
@@ -229,7 +230,7 @@ if __name__ == "__main__":
             print e
             break
 
-
-
+if __name__ == "__main__":
+    main()
 
 

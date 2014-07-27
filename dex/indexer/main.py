@@ -10,13 +10,13 @@ from os import makedirs, devnull
 from os.path import join, isfile
 from shutil import rmtree
 from subprocess import call
-from indexer.feeder import STATE
-from indexer.core.exceptions.indexer import IndexerDependencyFailure
-from indexer.core.exceptions.indexer import RepositoryCloneFailure
-from indexer.core.exceptions.indexer import StatisticsUnavailable
-from conf.config_loader import config_loader
-from core.repository_statistics import RepositoryStatistics
-from conf.logging.logger import logger
+from dex.indexer.feeder import STATE
+from dex.indexer.core.exceptions.indexer import IndexerDependencyFailure
+from dex.indexer.core.exceptions.indexer import RepositoryCloneFailure
+from dex.indexer.core.exceptions.indexer import StatisticsUnavailable
+from dex.conf.config_loader import config_loader
+from dex.indexer.core.repository_statistics import RepositoryStatistics
+from dex.conf.logging.logger import logger
 from algthm.utils.file import match_in_dir
 from algthm.utils.string import normalize_string
 from algthm.model import Base
