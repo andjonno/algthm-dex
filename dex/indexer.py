@@ -60,7 +60,10 @@ class Indexer:
         return self
 
     def __exit__(self, type, value, traceback):
-        rmtree(self.location)
+        try:
+            rmtree(self.location)
+        except:
+            pass
         self.repo = None
         self.repo_stats = None
         self.name = None

@@ -156,21 +156,31 @@ class Feeder:
         failures = list()
         try:
             # get failures and construct the insert statement
-            result = self.db_conn.repositories.find({'$gte': {'error_count': self.MAX_RETRIES}})
+            result = self.db_conn.repositories.find({'error_count': {'$gte': self.MAX_RETRIES}})
 
-            for failure in failures:
+            for failure in result:
                 failures.append(failure)
 
             if len(failures) > 0:
                 logger.info('Reporting {} failures for session#{}'.format(len(failures), self.session_id))
                 for failure in failures:
-                    failures.append((failure.get('_id'), failure.get('comment')))
-                items = ",".join("({},{}, '{}')".format(i[0], self.session_id, i[1]) for i in failures)
-                print items
+                    self.db_conn.repositories.update(
+                        {
+                            '_id': failure.get('_id')
+                        },
+                        {
+                            '$set': {
+                                'on_report': True,
+                                'comment': failure.get('comment')
+                            }
+                        },
+                        upsert=True,
+                        multi=True
+                    )
 
                 fmt = "\033[1;31mReported\033[0m - {} {}"
-                for _id, comment in failures:
-                    logger.info(fmt.format(_id, comment))
+                for failure in failures:
+                    logger.info(fmt.format(failure.get('_id'), failure.get('comment')))
 
         except Error as err:
             print err
