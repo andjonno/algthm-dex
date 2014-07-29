@@ -79,7 +79,23 @@ class Feeder:
         try:
             repositories = self.db_conn.repositories
             results = repositories.find(
-                {'error_count': {'$lt': self.MAX_RETRIES}, 'indexed_on': {'$lt': datetime.today()}, 'state': 0 }, limit=self.FEED_SIZE
+                {
+                    'error_count': {
+                        '$lt': self.MAX_RETRIES
+                    },
+                    '$or': [
+                        {
+                            'indexed_on': {
+                                '$lt': datetime.today()
+                            }
+                        },
+                        {
+                            'indexed_on': None
+                        }
+                    ],
+                    'state': 0
+                },
+                limit=self.FEED_SIZE
             ).sort([('activity', -1)])
 
             for repo in results:
