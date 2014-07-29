@@ -4,7 +4,9 @@ code base, how many lines (comment, code, blank),
 """
 
 from yaml import load
-from models.repository_statistic import RepositoryStatistic
+from core.repository_statistic import RepositoryStatistic
+
+
 BLACKLIST = ['header', 'SUM']
 
 

@@ -8,16 +8,18 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 
 setup(name='dex-indexer',
     version='1.0.0',
-    description='Core Business Service for Trail.',
-    author='-',
-    author_email='-',
+    description='Indexing module.',
+    author='Jonathon Scanes',
+    author_email='me@jscanes.com',
     packages=find_packages(),
     zip_safe=False,
     install_requires=[
         'mysql-connector-python',
         'pyyaml',
         'pygit2',
-        'pika'
+        'pika',
+        'elasticsearch',
+        'bunch'
     ],
     package_data={
         '': ['*.yaml']

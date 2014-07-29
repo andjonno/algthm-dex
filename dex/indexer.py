@@ -6,40 +6,43 @@ on the repository. The results from this is then searchable for users.
 import pygit2
 import re
 import time
+from datetime import datetime
 from os import makedirs, devnull
 from os.path import join, isfile
 from shutil import rmtree
 from subprocess import call
-from dex.indexer.feeder import STATE
-from dex.indexer.core.exceptions.indexer import IndexerDependencyFailure
-from dex.indexer.core.exceptions.indexer import RepositoryCloneFailure
-from dex.indexer.core.exceptions.indexer import StatisticsUnavailable
-from dex.conf.config_loader import config_loader
-from dex.indexer.core.repository_statistics import RepositoryStatistics
-from dex.conf.logging.logger import logger
+from feeder import STATE
+from cfg.loader import cfg
+from core.db import MongoConnection
+from core.exceptions.indexer import IndexerDependencyFailure
+from core.exceptions.indexer import RepositoryCloneFailure
+from core.exceptions.indexer import StatisticsUnavailable
+from core.repository_statistics import RepositoryStatistics
+from logger import logger
 from algthm.utils.file import match_in_dir
 from algthm.utils.string import normalize_string
-from algthm.model import Base
+from bson.objectid import ObjectId
 
 
-logger = logger.get_logger(__name__)
+logger = logger.get_logger('dex')
 CLOC_OUTPUT_FILE = 'cloc.yaml'
 
 
-class Indexing:
+class Indexer:
     """Indexer analyses repositories and stores result in database"""
 
-    def __init__(self, w_id, id, url):
+    def __init__(self, w_id, _id, url):
         """
         Arguments,
             url - string, url of repository
             location - string, location on local file system
         """
+        self.db_conn = MongoConnection().get_db()
         self.w_id = w_id
-        self.id = id
+        self._id = _id
         self.url = url
         self.name = url.split('/')[-1]
-        self.location = join(config_loader.cfg.indexer['directory'], "{}_{}".format(self.name, self.w_id))
+        self.location = join(cfg.settings.general.directory, "{}_{}".format(self.name, self.w_id))
 
         self.repo = None
         self.repo_stats = None
@@ -79,9 +82,9 @@ class Indexing:
         Begin the indexing transaction. A number of steps are carried out once the repository has been cloned on to the
         file system.
         """
-        repo_model = Base('repositories', dict(id=self.id)).fetch()
+        repo_model = self.db_conn.repositories.find_one({'_id': self._id})
+
         self.__start_time = time.time()
-        index_duration = 0
         try:
             # Load onto filesystem
             self.load()
@@ -89,19 +92,49 @@ class Indexing:
             self.do_stats()
             # Extract Readme
             self.do_readme()
-            # If control reaches here, indexing was successful
-            index_duration = time.strftime('%H:%M:%S', time.gmtime(time.time() - self.__start_time))
-            repo_model.set(dict(state=STATE['complete'],
-                                indexed_on=time.strftime('%Y-%m-%d %H:%M:%S'),
-                                index_duration=index_duration)).save()
-            logger.info("\033[1;32mCompleted\033[0m {} in {}".format(self.url, index_duration))
+
+            # If control reaches here, indexing was successful. Update the repository model.
+            self.process_results()
+
         except (RepositoryCloneFailure, StatisticsUnavailable, IndexerDependencyFailure) as err:
-            repo_model.set(dict(error_count=repo_model.get('error_count')+1, state='0', comment=err)).save()
+            self.db_conn.repositories.update(
+                {'_id': ObjectId(self._id)},
+                {
+                    '$inc': {
+                        'error_count': 1
+                    },
+                    '$set': {
+                        'state': STATE.get('waiting'),
+                        'comment': str(err)
+                    }
+                },
+                multi=True
+            )
+
         except OSError as err:
             logger.error(err)
 
+    def process_results(self):
+        """
+        Store the results in the repo model, then add job to queue for later indexing.
+        :return: None
+        """
+        index_duration = time.strftime('%H:%M:%S', time.gmtime(time.time() - self.__start_time))
+        self.db_conn.repositories.update(
+            {'_id': ObjectId(self._id)},
+            { '$set': {
+                  'state': STATE.get('complete'),
+                  'indexed_on': datetime.today(),
+                  'index_duration': index_duration
+            }},
+            upsert=False,
+            multi=True
+        )
+
+        logger.info("\033[1;32mCompleted\033[0m {} in {}".format(self.url, index_duration))
+
     #-------------------------------------------------------------------------------------------------------------------
-    #   GENERATE_ METHODS
+    #   DO_ METHODS
     #   Routines below do various indexing operations.
     #-------------------------------------------------------------------------------------------------------------------
 

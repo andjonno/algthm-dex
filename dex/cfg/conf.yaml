@@ -1,0 +1,30 @@
+
+general:
+  env: dev
+  workers: 4
+  directory: /Users/jon/tmp/repositories
+  welcome: cfg/welcome
+  cooling: 0
+  worker_cooling: 0
+  debug: 0
+
+environments:
+  dev:
+    db: algthm_development
+
+  test:
+    db: algthm_test
+
+mq:
+  indexing_q_name: index_queue
+  feed_size: 1000
+  smoothing_constant: 0.2
+  max_retries: 3
+  max_sleep: 10
+  connection:
+    host: localhost
+    username: guest
+    password: guest
+
+logging:
+  indexer: logging.yaml

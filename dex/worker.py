@@ -11,11 +11,11 @@ to remove it from the rotation and black listed.
 
 import pika
 import json
-from dex.conf.config_loader import config_loader
-from dex.conf.logging.logger import logger
-from dex.indexer.main import Indexing
+from logger import logger
+from indexer import Indexer
+from cfg.loader import cfg
 
-logger = logger.get_logger(__name__)
+logger = logger.get_logger('dex')
 TIMEOUT = 4
 
 
@@ -41,19 +41,19 @@ class Worker(object):
     # Method continues until terminated by indexer
     def run(self):
         connection = pika.BlockingConnection(pika.ConnectionParameters(
-            host=config_loader.cfg.mq['connection']['host'])
+            host=cfg.settings.mq.connection.host)
         )
         channel = connection.channel()
-        channel.queue_declare(queue=config_loader.cfg.mq['indexing_q_name'], durable=True)
+        channel.queue_declare(queue=cfg.settings.mq.indexing_q_name, durable=True)
 
         def callback(ch, method, properties, body):
             m = json.loads(body)
-            with Indexing(self.id, m['id'], m['url']) as idxr:
+            with Indexer(self.id, m['id'], m['url']) as idxr:
                 idxr.index()
 
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
         channel.basic_qos(prefetch_count=1)
-        channel.basic_consume(callback, queue=config_loader.cfg.mq['indexing_q_name'])
+        channel.basic_consume(callback, queue=cfg.settings.mq.indexing_q_name)
         channel.start_consuming()
 

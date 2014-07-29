@@ -4,45 +4,43 @@ Feeder retrieves urls from the repository store and adds them to the MQ when nec
 
 import time
 import pika
-from dex.conf.config_loader import config_loader
+from cfg.loader import cfg
 from math import pow
 from mysql.connector import Error
 from json import dumps
-from dex.conf.logging.logger import logger
+from logger import logger
 from logging import getLogger, CRITICAL
 from requests import get
+from datetime import datetime
 
 
-logger = logger.get_logger(__name__)
+logger = logger.get_logger('dex')
 requests_logger = getLogger('requests')
 requests_logger.setLevel(CRITICAL)
 
 
 STATE = dict(
-    waiting='0',
-    processing='1',
-    complete='2'
+    waiting=0,
+    processing=1,
+    complete=2
 )
-FEEDER_STMT = \
-    "SELECT id, url FROM repositories WHERE id IN (SELECT id FROM repositories ORDER BY activity_rating DESC) AND " \
-    "state = '{0}' AND indexed_on < NOW() AND error_count < {2} ORDER BY indexed_on ASC LIMIT {1};"
-UPDATE_STMT = "UPDATE repositories SET state = '{}' WHERE id IN ({});"
-SELECT_TO_REPORT = "SELECT id, comment FROM repositories WHERE error_count >= {};"
-INSERT_REPORTED = "INSERT INTO on_report (repo_id, session_id, comment) VALUES {};"
+UPDATE_STMT         = "UPDATE repositories SET state = '{}' WHERE id IN ({});"
+SELECT_TO_REPORT    = "SELECT id, comment FROM repositories WHERE error_count >= {};"
+INSERT_REPORTED     = "INSERT INTO on_report (repo_id, session_id, comment) VALUES {};"
 
 
 class Feeder:
     """
     Shared properties
     """
-    MAX_RETRIES = config_loader.cfg.mq['max_retries']
-    MQ_USER = config_loader.cfg.mq['connection']['username']
-    MQ_PASS = config_loader.cfg.mq['connection']['password']
-    WORKERS = config_loader.cfg.indexer['workers']
-    FEED_SIZE = config_loader.cfg.mq['feed_size']
+    MAX_RETRIES = cfg.settings.mq.max_retries
+    MQ_USER = cfg.settings.mq.connection.username
+    MQ_PASS = cfg.settings.mq.connection.password
+    FEED_SIZE = cfg.settings.mq.feed_size
     FEED_BUFFER = FEED_SIZE * 0.2
-    FEED_SM_CONSTANT = config_loader.cfg.mq['smoothing_constant']
-    FEED_MAX_SLEEP = config_loader.cfg.mq['max_sleep']
+    FEED_SM_CONSTANT = cfg.settings.mq.smoothing_constant
+    FEED_MAX_SLEEP = cfg.settings.mq.max_sleep
+    WORKERS = cfg.settings.general.workers
     sleep = 10
     demand = 0
     forecast = 0
@@ -52,15 +50,15 @@ class Feeder:
     __stop_feeding = False
 
 
-    def __init__(self, session, db_conn, mq_conn):
+    def __init__(self, session_id, db_conn, mq_conn):
         """
         Establish connection with database and MQ
         """
-        self.session = session
+        self.session_id = session_id
         self.db_conn = db_conn
         self.mq_conn = mq_conn
         self.chan = self.mq_conn.channel()
-        self.chan.queue_declare(queue=config_loader.cfg.mq['indexing_q_name'], durable=True)
+        self.chan.queue_declare(queue=cfg.settings.mq.indexing_q_name, durable=True)
         self.system = None
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -75,26 +73,34 @@ class Feeder:
             return
         else:
             self.__last_feed = time.time()
-        prepared = FEEDER_STMT.format(STATE['waiting'], self.FEED_SIZE, self.MAX_RETRIES)
+
         items = []
 
         try:
-            cursor = self.db_conn.cursor()
-            cursor.execute(prepared)
-            if cursor.rowcount > 0:
-                for (_id, url) in cursor:
-                    items.append((_id, url))
-                ids = [i[0] for i in items]
+            repositories = self.db_conn.repositories
+            results = repositories.find(
+                {'error_count': {'$lt': self.MAX_RETRIES}, 'indexed_on': {'$lt': datetime.today()}, 'state': 0 }, limit=self.FEED_SIZE
+            ).sort([('activity', -1)])
+
+            for repo in results:
+                items.append((repo['_id'], repo['url']))
+
+            # update session
+            session = self.db_conn.sessions.find_one({'_id': self.session_id})
+            session['feed'] = len(items) if not session.get('feed') else session.get('feed') + len(items)
+            self.db_conn.sessions.save(session)
+
+            # update selected repo status' to 'processing=1'
+            if len(items):
+                ids = [x[0] for x in items]
                 self.__set_flag_processing(ids)
+
+                # push to the MQ
                 for _id, url in items:
                     self.__add_to_queue(_id, url)
-
-                # update session object
-                self.session.set('feed', self.session.get('feed') + len(items)).save()
             else:
                 logger.info('\033[1;37mFeeding exhausted.\033[0m')
                 self.__stop_feeding = True
-            cursor.close()
 
         except Error as err:
             # TODO: implement error handling
@@ -140,30 +146,27 @@ class Feeder:
             sleep = (messages - (self.FEED_BUFFER if messages > self.FEED_BUFFER else 0)) / self.forecast
             self.sleep = self.FEED_MAX_SLEEP if sleep > self.FEED_MAX_SLEEP else sleep
 
-            logger.info(self.__status(fmt=True))
+            self.__status()
             time.sleep(self.sleep)
 
     def report_failures(self):
         """
         Method gets all repositories that failed to be indexed and places them on report.
         """
+        failures = list()
         try:
-            cursor = self.db_conn.cursor()
-            cursor.execute(SELECT_TO_REPORT.format(self.MAX_RETRIES))
-
             # get failures and construct the insert statement
-            session_id = self.session.get('id')
-            failures = []
-            if cursor.rowcount > 0:
-                logger.info('Reporting {} failures for session#{}'.format(cursor.rowcount, session_id))
-                for _id, comment in cursor:
-                    failures.append((_id, comment))
-                items = ",".join("({},{}, '{}')".format(i[0], session_id, i[1]) for i in failures)
-                cursor.close()
+            result = self.db_conn.repositories.find({'$gte': {'error_count': self.MAX_RETRIES}})
 
-                cursor = self.db_conn.cursor()
-                cursor.execute(INSERT_REPORTED.format(items))
-                cursor.close()
+            for failure in failures:
+                failures.append(failure)
+
+            if len(failures) > 0:
+                logger.info('Reporting {} failures for session#{}'.format(len(failures), self.session_id))
+                for failure in failures:
+                    failures.append((failure.get('_id'), failure.get('comment')))
+                items = ",".join("({},{}, '{}')".format(i[0], self.session_id, i[1]) for i in failures)
+                print items
 
                 fmt = "\033[1;31mReported\033[0m - {} {}"
                 for _id, comment in failures:
@@ -182,45 +185,47 @@ class Feeder:
         STMT is executed.
         """
         prepared = UPDATE_STMT.format(STATE['processing'], ','.join("{}".format(n) for n in ids))
-        try:
-            cursor = self.db_conn.cursor()
-            cursor.execute(prepared)
-            cursor.close()
-        except Error as err:
-            print err
+
+        # insert to db
+        for id in ids:
+            self.db_conn.repositories.update({'_id': id}, {
+                '$set': {'state': STATE.get('processing')}
+            }, multi=True, upsert=False)
 
     def __add_to_queue(self, _id, url):
         """
         Adds the url to the queue
         """
         payload = dumps(dict(
-            id=_id,
+            id=str(_id),
             url=url
         ))
         self.chan.basic_publish(
             exchange='',
-            routing_key=config_loader.cfg.mq['indexing_q_name'],
+            routing_key=cfg.settings.mq.indexing_q_name,
             body=payload,
             properties=pika.BasicProperties(
                 delivery_mode=2
             )
         )
 
-    def __status(self, fmt=False):
-        try:
-            time_rmg = time.strftime('%H:%M:%S', time.gmtime(self.session.repos_remaining() /
-                                                             (self.forecast if self.forecast > 0 else 1)))
-        except ValueError:
-            time_rmg = "--:--:--"
+    def __status(self):
+        session = self.db_conn.sessions.find_one({'_id': self.session_id})
+        progress = (session.get('feed') / session.get('total') if session.get('total') != 0 else 1)
+        repos_remaining = int(session.get('total') - session.get('total') * progress)
+        repos_remaining = repos_remaining if repos_remaining >= 0 else 0
+        time_rmg = time.strftime('%H:%M:%S', time.gmtime(repos_remaining /
+                                                         (self.forecast if self.forecast >= 1 else 1)))
 
         d = {
-            'Index Rate (messages/s) D/F': ("{}/{}".format(self.demand, self.forecast)),
-            'Error (sq)': self.error_sq,
-            'Progress (%)': self.session.progress() * 100,
-            'Repos Remaining': self.session.repos_remaining(),
-            'Time Remaining(est)': time_rmg
+            'Index Rate': ("{}/{}".format(self.demand, self.forecast)),
+            'Square Error': self.error_sq,
+            'Progress': progress * 100,
+            'Repositories Remaining': repos_remaining,
+            'Time Remaining': time_rmg
         }
-
-        return ', '.join("{}={}".format(i, d[i]) for i in d) if fmt else d
+        fmt = '{0:>40}: {1:<10}'
+        for k,v in d.iteritems():
+            logger.info(fmt.format(k,v))
 
 
