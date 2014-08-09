@@ -14,6 +14,9 @@ import json
 from logger import logger
 from indexer import Indexer
 from cfg.loader import cfg
+from core.exceptions.indexer import ExternalSystemException
+from core.db import MongoConnection
+from datetime import datetime
 
 logger = logger.get_logger('dex')
 TIMEOUT = 4
@@ -48,8 +51,18 @@ class Worker(object):
 
         def callback(ch, method, properties, body):
             m = json.loads(body)
-            with Indexer(self.id, m['id'], m['url']) as idxr:
-                idxr.index()
+            with Indexer(self.id, m['id'], m['url']) as indexer:
+                try:
+                    indexer.load().index()
+                except ExternalSystemException as err:
+                    # should be investigated.
+                    MongoConnection().get_db().system_errors.insert({
+                        'exception': 'ExternalSystemError',
+                        'message': err,
+                        'timestamp': datetime.today(),
+                        'task': 'indexing {}'.format(m['id'])
+                    })
+
 
             ch.basic_ack(delivery_tag=method.delivery_tag)
 

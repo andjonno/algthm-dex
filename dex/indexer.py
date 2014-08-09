@@ -3,25 +3,28 @@ Indexer, takes a repository url and checks out on the local file system. This mo
 on the repository. The results from this is then searchable for users.
 """
 
-import pygit2
 import re
 import time
 from datetime import datetime
 from os import makedirs, devnull
-from os.path import join, isfile
+from os import path
 from shutil import rmtree
 from subprocess import call
+import pygit2
+from algthm.utils.file import match_in_dir
+from algthm.utils.string import normalize_string
+from bson.objectid import ObjectId
 from feeder import STATE
 from cfg.loader import cfg
 from core.db import MongoConnection
 from core.exceptions.indexer import IndexerDependencyFailure
 from core.exceptions.indexer import RepositoryCloneFailure
 from core.exceptions.indexer import StatisticsUnavailable
-from core.repository_statistics import RepositoryStatistics
+from core.exceptions.indexer import ExternalSystemException
+from core.model.languages import Languages
+from core.model.result import Result
 from logger import logger
-from algthm.utils.file import match_in_dir
-from algthm.utils.string import normalize_string
-from bson.objectid import ObjectId
+from elasticsearch import Elasticsearch, ElasticsearchException
 
 
 logger = logger.get_logger('dex')
@@ -31,22 +34,24 @@ CLOC_OUTPUT_FILE = 'cloc.yaml'
 class Indexer:
     """Indexer analyses repositories and stores result in database"""
 
-    def __init__(self, w_id, _id, url):
+    def __init__(self, worker_id, id, url):
         """
-        Arguments,
-            url - string, url of repository
-            location - string, location on local file system
+        Initialize an indexer with id and url.
+
+        :param worker_id: int worker ID
+        :param id: int repository ID
+        :param url: string repository url
+        :return: None
         """
         self.db_conn = MongoConnection().get_db()
-        self.w_id = w_id
-        self._id = _id
+        self.worker_id = worker_id
+        self.id = id
         self.url = url
         self.name = url.split('/')[-1]
-        self.location = join(cfg.settings.general.directory, "{}_{}".format(self.name, self.w_id))
+        self.location = path.join(cfg.settings.general.directory, '{}@{}'.format(self.name, self.worker_id))
 
         self.repo = None
-        self.repo_stats = None
-        self.name = None
+        self.language_statistics = None
         self.readme = None
 
         self.__start_time = None
@@ -62,10 +67,10 @@ class Indexer:
     def __exit__(self, type, value, traceback):
         try:
             rmtree(self.location)
-        except:
+        except OSError:
             pass
         self.repo = None
-        self.repo_stats = None
+        self.language_statistics = None
         self.name = None
         self.readme = None
 
@@ -73,35 +78,34 @@ class Indexer:
         """
         Downloads the repository to the file system.
         """
-        logger.info("\033[1;33mCloning\033[0m {}".format(self.url))
+        logger.info('\033[1;33mCloning\033[0m {}'.format(self.url))
         try:
             pygit2.clone_repository(self.url, self.location)
+            self.repo = pygit2.init_repository(self.location)
         except pygit2.GitError, err:
-            raise RepositoryCloneFailure(("Unable to clone repository {}, with error: {}".format(self.url, err)))
-        self.repo = pygit2.init_repository(self.location)
+            raise RepositoryCloneFailure(('Unable to clone repository {}, with error: {}'.format(self.url, err)))
+
+        return self
 
     def index(self):
         """
         Begin the indexing transaction. A number of steps are carried out once the repository has been cloned on to the
         file system.
         """
-        repo_model = self.db_conn.repositories.find_one({'_id': self._id})
+        repo_model = self.db_conn.repositories.find_one({'_id': self.id})
 
         self.__start_time = time.time()
         try:
-            # Load onto filesystem
-            self.load()
-            # Generate repository statistics
-            self.do_stats()
-            # Extract Readme
-            self.do_readme()
-
-            # If control reaches here, indexing was successful. Update the repository model.
+            self.extract_language_statistics()
+            self.extract_readme()
             self.process_results()
 
         except (RepositoryCloneFailure, StatisticsUnavailable, IndexerDependencyFailure) as err:
+            # Log failure to database.
             self.db_conn.repositories.update(
-                {'_id': ObjectId(self._id)},
+                {
+                    '_id': ObjectId(self.id)
+                },
                 {
                     '$inc': {
                         'error_count': 1
@@ -114,6 +118,10 @@ class Indexer:
                 multi=True
             )
 
+        except ElasticsearchException as err:
+            # External dependency error, should be reported.
+            raise ExternalSystemException('Elastic Search error: {}'.format(err))
+
         except OSError as err:
             logger.error(err)
 
@@ -124,24 +132,36 @@ class Indexer:
         """
         index_duration = time.strftime('%H:%M:%S', time.gmtime(time.time() - self.__start_time))
         self.db_conn.repositories.update(
-            {'_id': ObjectId(self._id)},
-            { '$set': {
-                  'state': STATE.get('complete'),
-                  'indexed_on': datetime.today(),
-                  'index_duration': index_duration
-            }},
+            {
+                '_id': ObjectId(self.id)
+            },
+            {
+                '$set': {
+                    'state': STATE.get('complete'),
+                    'indexed_on': datetime.today(),
+                    'index_duration': index_duration
+                }
+            },
             upsert=False,
             multi=True
         )
 
-        logger.info("\033[1;32mCompleted\033[0m {} in {}".format(self.url, index_duration))
+        # Aggregate results
+        self.result = Result(self.name, self.url)
+        self.result.set_statistics(self.language_statistics)
+        self.result.set_fulltext(readme=self.readme)
+
+        es = Elasticsearch()
+        es.index(index='repositories', doc_type='json', body=self.result.serialize(), id=str(self.id))
+
+        logger.info('\033[1;32mCompleted\033[0m {} in {}'.format(self.url, index_duration))
 
     #-------------------------------------------------------------------------------------------------------------------
     #   DO_ METHODS
     #   Routines below do various indexing operations.
     #-------------------------------------------------------------------------------------------------------------------
 
-    def do_stats(self):
+    def extract_language_statistics(self):
         """
         Method calls a subprocess 'cloc' to do some stats on the directory. The result of this is saved to
         `CLOC_OUTPUT_FILE` in the repository location. The results are in yaml format, which will be later read. `cloc`
@@ -153,19 +173,19 @@ class Indexer:
         """
         try:
             dn = open(devnull, 'w')
-            call(["cloc", self.location, "--yaml", "--report-file={}".format(join(self.location, CLOC_OUTPUT_FILE))],
+            call(['cloc', self.location, '--yaml', '--report-file={}'.format(path.join(self.location, CLOC_OUTPUT_FILE))],
                  stdout=dn, stderr=dn)
             dn.close()
         except OSError:
-            raise IndexerDependencyFailure("`cloc` application was not found on this machine.")
+            raise IndexerDependencyFailure('`cloc` application was not found on this machine.')
 
-        if not isfile(join(self.location, CLOC_OUTPUT_FILE)):
-            logger.info("\033[1;31mEmpty\033[0m {}, skipping ..".format(self.url))
-            raise StatisticsUnavailable("Empty repository")
+        if not path.isfile(path.join(self.location, CLOC_OUTPUT_FILE)):
+            logger.info('\033[1;31mEmpty\033[0m {}, skipping ..'.format(self.url))
+            raise StatisticsUnavailable('Empty repository')
         else:
-            self.repo_stats = RepositoryStatistics(join(self.location, CLOC_OUTPUT_FILE), self.name)
+            self.language_statistics = Languages(path.join(self.location, CLOC_OUTPUT_FILE), self.name)
 
-    def do_readme(self):
+    def extract_readme(self):
         """
         Searchable text currently includes README files. They contain the rundown of the codebase; we're primarily
         interested in its purpose. A user search for "ruby web framework", could match a line in the rails readme:
@@ -174,15 +194,15 @@ class Indexer:
         """
         try:
             r = re.compile(r'^README', re.IGNORECASE)
-            readme_loc = match_in_dir(r, self.location)[0]
+            readme_location = match_in_dir(r, self.location)[0]
 
-            f = open(readme_loc, 'r')
+            f = open(readme_location, 'r')
             self.readme = normalize_string(f.read())
             f.close()
         except Exception:
             pass # no readme
 
-    def do_licensing(self):
+    def extract_license(self):
         """
         License information may be something to display in the application results. This would be useful for
         organisations who are conscientious of the open source projects they use in their products or development.

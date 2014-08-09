@@ -14,12 +14,12 @@ setup(name='dex-indexer',
     packages=find_packages(),
     zip_safe=False,
     install_requires=[
-        'mysql-connector-python',
         'pyyaml',
         'pygit2',
         'pika',
         'elasticsearch',
-        'bunch'
+        'bunch',
+        'requests',
     ],
     package_data={
         '': ['*.yaml']

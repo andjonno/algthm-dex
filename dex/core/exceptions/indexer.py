@@ -28,3 +28,11 @@ class StatisticsUnavailable(Exception):
     no code at all.
     """
     pass
+
+class ExternalSystemException(Exception):
+    """
+    This exception is thrown when an external dependency/system is unreachable. For example, submitting results
+    to elasticsearch failed. The exception message is logged to an error database and the worker is shutdown. This is
+    to prevent the system from stalling and quietly idling instead sysadmins are informed of the issue.
+    """
+    pass

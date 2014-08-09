@@ -4,8 +4,8 @@ general:
   workers: 4
   directory: /Users/jon/tmp/repositories
   welcome: cfg/welcome
-  cooling: 0
-  worker_cooling: 0
+  cooling: 1
+  worker_cooling: .1
   debug: 0
 
 environments:
