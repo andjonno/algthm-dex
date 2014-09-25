@@ -4,7 +4,7 @@ code base, how many lines (comment, code, blank),
 """
 
 from yaml import load
-from core.model.language import Language
+from dex.core.model.language import Language
 
 
 BLACKLIST = ['header', 'SUM']

@@ -15,9 +15,9 @@ class Result:
     # serial, is the datastructure holding the object which is sent to the index.
     __serial = dict(
         text=dict(
-            readme='',
-            license='',
-            changelog='',
+            readme=None,
+            license=None,
+            changelog=None,
         ),
         repository=dict(
             name=None,

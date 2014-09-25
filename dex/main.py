@@ -2,8 +2,9 @@
 """
 Indexer module
 
-Manages the multiprocess approach to indexing the database. This module spawns a fixed number of worker
-process where each worker feeds repository urls fetched from the queue. These are passed to the indexing object.
+Manages the multiprocess approach to indexing the database. This module spawns a
+fixed number of worker process where each worker feeds repository urls fetched
+from the queue. These are passed to the indexing object.
 
 The worker is defined by worker.py which is the root execution of the process.
 """
@@ -13,14 +14,13 @@ import sys
 import worker
 import feeder
 from shutil import rmtree
-from os import path
 from time import sleep
 from algthm.utils.file import dir_empty
 from cfg.loader import cfg
 from multiprocessing import Process
 from logger import logger
-from core.db import MongoConnection
-from core.exceptions.indexer import IndexerBootFailure
+from dex.core.db import MongoConnection
+from dex.core.exceptions.indexer import IndexerBootFailure
 from logging import CRITICAL, getLogger
 from datetime import datetime
 
@@ -74,14 +74,19 @@ def test_mq_connection(mq_conn):
     return True
 
 
-def cool_off(duration=3, char='-'):
+def test_es_connection(es_conn):
+    return es_conn.ping()
+
+
+def cool_off(duration=3, char='*'):
     """
     Throws up a progress bar for the given duration.
     """
     interval = duration / 100.0
     for i in range(101):
         sys.stdout.write('\r')
-        sys.stdout.write("\033[1;34m%-82s %d\033[0m" % (char * (int(i * 0.82)), i))
+        sys.stdout.write('\033[1;34m%-82s %d\033[0m' %
+                         (char * (int(i * 0.82)), i))
         sys.stdout.flush()
         sleep(interval)
 
@@ -100,14 +105,17 @@ def create_index_session(db_conn):
         repositories = db_conn.repositories
         sessions = db_conn.sessions
 
-        repositories.update({}, {'$set': {'error_count': 0,'state': feeder.STATE.get('waiting'), 'comment': ''}},
+        repositories.update({}, {'$set': {'error_count': 0,'state':
+            feeder.STATE.get('waiting'), 'comment': ''}},
                               multi=True, upsert=True)
-        session_id = sessions.insert({'start_time': datetime.today(), 'total': repositories.count()})
+        session_id = sessions.insert({'start_time': datetime.today(), 'total':
+            repositories.count()})
 
     except Exception:
         raise IndexerBootFailure('Failed to initialize session.')
 
     return session_id
+
 
 def finish_session(db_conn, session_id):
     db_conn.sessions.update(
@@ -121,6 +129,7 @@ def finish_session(db_conn, session_id):
         upsert=True
     )
 
+
 def prepare_workspace(workspace):
     ok = True
     try:
@@ -131,15 +140,21 @@ def prepare_workspace(workspace):
     return ok
 
 
+def welcome(working_directory):
+    welcome = """
+        .'   .;.    _
+   .-..'  .-.   `.,' '      DEX indexing module 0.0.3. Copyright 2014 Algthm.
+  :   ; .;.-'   ,'`.        Working Directory: [working_directory]
+  `:::'`.`:::'-'    `._.    Log: [log_location]
+"""
+    print '\033[1;34m{}\033[0m'\
+        .format(welcome.replace('[log_location]', '/Users/jon/tmp/dex.log')
+                .replace('[working_directory]', working_directory))
+
+
 def main():
-    with open(path.abspath(cfg.settings.general.welcome)) as welcome:
-        working_dir = cfg.settings.general.directory
-
-        print '\033[1;34m{}\033[0m'.format(welcome.read() \
-            .replace('[log_location]', '/Users/jon/tmp/dex.log') \
-            .replace('[working_dir]', working_dir))
-
-    print '> booting DEX'
+    working_directory = cfg.settings.general.directory
+    welcome(working_directory)
 
     while 1:
         try:
@@ -154,13 +169,15 @@ def main():
             else:
                 raise IndexerBootFailure("Could not connect to DB.")
 
-            print '> connecting to MQ @ {} ..'.format(cfg.settings.mq.connection.host),
-            mq_conn = pika.BlockingConnection(pika.ConnectionParameters(
-                host=cfg.settings.mq.connection.host
-            ))
-            if mq_conn:
-                print 'done'
-            else:
+            print '> connecting to MQ @ {} ..'\
+                .format(cfg.settings.mq.connection.host),
+            try:
+                mq_conn = pika.BlockingConnection(pika.ConnectionParameters(
+                    host=cfg.settings.mq.connection.host
+                ))
+                if mq_conn:
+                    print 'done'
+            except pika.exceptions.AMQPConnectionError:
                 raise IndexerBootFailure("Could not connect to MQ.")
 
             print 'letting connections establish before testing.'
@@ -181,12 +198,14 @@ def main():
             if test_mq_connection(mq_conn):
                 print 'ok'
                 print '> purging MQ ..',
-                mq_conn.channel().queue_delete(queue=cfg.settings.mq.indexing_q_name)
+                mq_conn.channel().queue_delete(
+                    queue=cfg.settings.mq.indexing_q_name)
                 print 'ok'
             else:
                 raise IndexerBootFailure("MQ connection failed.")
 
-            workers = initialize_workers(cfg.settings.general.workers, worker.target)
+            workers = initialize_workers(cfg.settings.general.workers,
+                                         worker.target)
             print 'letting workers establish.'
             cool_off(cfg.settings.general.cooling)
 
@@ -197,16 +216,17 @@ def main():
             else:
                 raise IndexerBootFailure("Could not start the feeder.")
 
-            #-----------------------------------------------------------------------------------------------------------
+            #-------------------------------------------------------------------
             #   All Checks Complete - Run
-            #-----------------------------------------------------------------------------------------------------------
+            #-------------------------------------------------------------------
             print '> running ...'
             fdr.feed_manager()
 
-            # Presence of contents in the working directory denotes there are a number of workers still processes jobs.
-            # Wait for directory to be empty before continuing.
+            # Presence of contents in the working directory denotes there are a
+            # number of workers still processes jobs. Wait for directory to be
+            # empty before continuing.
             print '> finalising ..',
-            while not dir_empty(working_dir):
+            while not dir_empty(working_directory):
                 print '.',
                 sleep(5)
             print 'done!'
@@ -232,6 +252,7 @@ def main():
 
         except IndexerBootFailure as e:
             print e
+            print "exiting .."
             break
 
 if __name__ == "__main__":

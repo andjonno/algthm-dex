@@ -127,7 +127,6 @@ class Feeder:
         Monitors the rate of consumption of the queue, and determines the appropriate time to add more urls to the
         queue. Exponential smoothing is used here to assist in determining the appropriate time to repopulate the queue.
         """
-        complete = False
         messages = None
         sleep = 0
         # once feeder has no remaining repositories to populate, `sleep_remaining` will contain the total sleep time
@@ -156,7 +155,6 @@ class Feeder:
                 else:
                     sleep_remaining = messages / self.forecast
                     timeout = int(sleep_remaining / self.FEED_MAX_SLEEP)
-                    complete = True
 
             # determine sleep time required to get to buffer
             sleep = (messages - (self.FEED_BUFFER if messages > self.FEED_BUFFER else 0)) / self.forecast

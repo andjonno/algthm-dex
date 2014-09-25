@@ -28,7 +28,7 @@ setup(name='dex-indexer',
     tests_require=['nose'],
     entry_points={
         'console_scripts': [
-            'dex = dex.dex:main'
+            'dex = dex.main:main'
         ]
     }
 )

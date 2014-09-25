@@ -1,8 +1,8 @@
 
 general:
   env: dev
-  workers: 4
-  directory: /Users/jon/tmp/repositories
+  workers: 64
+  directory: /Users/jon/tmp/repositories/
   welcome: cfg/welcome
   cooling: 1
   worker_cooling: .1
@@ -25,6 +25,10 @@ mq:
     host: localhost
     username: guest
     password: guest
+
+es:
+  host: localhost
+  port: 9200
 
 logging:
   indexer: logging.yaml

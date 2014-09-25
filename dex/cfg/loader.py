@@ -12,8 +12,8 @@ A singleton class providing simple access to configurations.
 
 import os
 import yaml
-from missile.lib import constants
 import bunch
+from dex.core import constants
 
 
 class Loader:
