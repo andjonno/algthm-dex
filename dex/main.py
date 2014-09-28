@@ -22,6 +22,8 @@ from dex.core.db import MongoConnection
 from dex.core.exceptions.indexer import IndexerBootFailure
 from logging import CRITICAL, getLogger
 from datetime import datetime
+from elasticsearch import Elasticsearch, ElasticsearchException
+
 
 logger.setup_logging()
 logger = logger.get_logger('dex')
@@ -154,6 +156,14 @@ def main():
                     print 'done'
             except pika.exceptions.AMQPConnectionError:
                 raise IndexerBootFailure('Could not connect to MQ.')
+
+            print '> connecting to ElasticSearch @ localhost ..',
+            try:
+                es_conn = Elasticsearch()
+                if es_conn:
+                    print 'done'
+            except ElasticsearchException as e:
+                raise IndexerBootFailure('Could not connect to ES {}'.format(e))
 
             print 'letting connections establish before testing.'
             cool_off(cfg.settings.general.cooling)

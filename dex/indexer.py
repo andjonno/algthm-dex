@@ -25,6 +25,7 @@ from core.model.languages import Languages
 from core.model.result import Result
 from logger import logger
 from core.metric_sampler import MetricSampler
+from elasticsearch import Elasticsearch
 
 
 logger = logger.get_logger('dex')
@@ -133,6 +134,9 @@ class Indexer:
         self.result.set_fulltext(readme=self.readme)
 
         # Store Metrics
+        es = Elasticsearch()
+        es.index(index='repositories', doc_type='json',
+                 body=self.result.serialize(), id=str(self.id))
 
         logger.info('\033[1;32mCompleted\033[0m {} in {}'
                     .format(self.url, index_duration))
