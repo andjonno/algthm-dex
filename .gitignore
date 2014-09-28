@@ -4,3 +4,5 @@
 logs/
 .svn
 *.egg-info/
+build/
+dist/
