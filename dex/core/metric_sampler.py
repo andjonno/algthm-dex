@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-
+import pygit2
 import datetime
 from metric import Metric
 import sector as sec
@@ -29,7 +29,6 @@ class MetricSampler:
         """
         Initialize Metric
         :param repository: pygit2.Repository
-        :param since: epoch time
         """
 
         if repository and type(repository) != pygit2.Repository:
@@ -39,19 +38,20 @@ class MetricSampler:
         self.r = repository
         self.head = self.r.get(self.r.head.target)
         self.__load_commits()
+        self.__sectors = []
 
     def sample_all(self):
         """
         Runs the process to sample the repository.
         :return:
         """
-
         samples = []
-        sectors = self.__generate_sectors()
+        self.__sectors = self.__generate_sectors()
 
-        for sector in sectors:
+        for sector in self.__sectors:
             commits_in_sector = sector.get_objects()
             commits_count = len(commits_in_sector)
+            print 'running sector'
 
             if commits_count:
                 m = Metric()
@@ -72,6 +72,9 @@ class MetricSampler:
 
         for s in samples:
             print s
+
+    def get_sectors(self):
+        return self.__sectors
 
     def __score(self, a, b, commits_for_sector):
         """
@@ -139,10 +142,3 @@ class MetricSampler:
         sectors.append(sec)
 
         return sectors
-
-# ------------------------------------------------------------------------------
-# test
-import pygit2
-
-metric = MetricSampler(pygit2.Repository('./kubernetes'))
-metric.sample_all()

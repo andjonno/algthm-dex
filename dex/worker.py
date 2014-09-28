@@ -16,7 +16,6 @@ from elasticsearch import ElasticsearchException
 import pika
 from pika import exceptions
 import json
-from feeder import STATE
 from logger import logger
 from indexer import Indexer
 from cfg.loader import cfg
@@ -46,15 +45,15 @@ class Worker(object):
             repo_location, string location to store repository
         """
         self.id = _id
-
+        self.db_conn = MongoConnection().get_db()
 
     # Method continues until terminated by indexer
     def run(self):
         connection = pika.BlockingConnection(pika.ConnectionParameters(
-            host=cfg.settings.mq.connection.host)
-        )
+            host=cfg.settings.mq.connection.host
+        ))
         channel = connection.channel()
-        channel.queue_declare(queue=cfg.settings.mq.indexing_q_name,
+        channel.queue_declare(queue=cfg.settings.mq.queue_name,
                               durable=True)
 
         def callback(ch, method, properties, body):
@@ -70,19 +69,18 @@ class Worker(object):
                         'timestamp': datetime.today(),
                         'task': 'indexing {}'.format(m['id'])
                     })
-                except (RepositoryCloneFailure, StatisticsUnavailable,
-                        IndexerDependencyFailure) as err:
+                except (RepositoryCloneFailure, StatisticsUnavailable, IndexerDependencyFailure) as err:
                     # Repository specific failure
                     self.db_conn.repositories.update(
                         {
-                            '_id': ObjectId(self.id)
+                            '_id': ObjectId(m['id'])
                         },
                         {
                             '$inc': {
                                 'error_count': 1
                             },
                             '$set': {
-                                'state': STATE.get('waiting'),
+                                'state': 0,
                                 'comment': str(err)
                             }
                         },
@@ -97,11 +95,10 @@ class Worker(object):
                 except OSError as err:
                     logger.error(err)
 
-
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
         channel.basic_qos(prefetch_count=1)
-        channel.basic_consume(callback, queue=cfg.settings.mq.indexing_q_name)
+        channel.basic_consume(callback, queue=cfg.settings.mq.queue_name)
         try:
             channel.start_consuming()
         except exceptions.ConnectionClosed:

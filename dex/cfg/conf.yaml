@@ -1,7 +1,7 @@
 
 general:
   env: dev
-  workers: 64
+  workers: 8
   directory: /Users/jon/tmp/repositories/
   welcome: cfg/welcome
   cooling: 1
@@ -16,7 +16,7 @@ environments:
     db: algthm_test
 
 mq:
-  indexing_q_name: index_queue
+  queue_name: indexing
   feed_size: 1000
   smoothing_constant: 0.2
   max_retries: 1
@@ -25,10 +25,6 @@ mq:
     host: localhost
     username: guest
     password: guest
-
-es:
-  host: localhost
-  port: 9200
 
 logging:
   indexer: logging.yaml

@@ -19,3 +19,13 @@ class Metric:
     def __str__(self):
         return '{},{:=6} additions, {:=6} deletions, {:=6} commits, {:=6} activity @ {}'.format(self.commit.id, self.additions, -self.deletions,
                            self.commit_count, self.activity, self.timestamp)
+
+    def __dict__(self):
+        return dict(
+            commit=self.commit.id,
+            additions=self.additions,
+            deletions=self.deletions,
+            commit_count=self.commit_count,
+            activity=self.activity,
+            timestamp=self.timestamp
+        )

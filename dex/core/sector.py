@@ -52,3 +52,5 @@ class Sector:
     def __str__(self):
         return "Sector [{} -> {}]".format(datetime.fromtimestamp(self.__start), datetime.fromtimestamp(self.__end))
 
+    def __dict__(self):
+        return [o.__dict__() for o in self.__objects]

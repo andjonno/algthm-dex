@@ -15,16 +15,17 @@ import pygit2
 from algthm.utils.file import match_in_dir
 from algthm.utils.string import normalize_string
 from bson.objectid import ObjectId
-from feeder import STATE
 from cfg.loader import cfg
 from core.db import MongoConnection
 from core.exceptions.indexer import IndexerDependencyFailure
 from core.exceptions.indexer import RepositoryCloneFailure
 from core.exceptions.indexer import StatisticsUnavailable
-from core.exceptions.indexer import ExternalSystemException
 from core.model.languages import Languages
 from core.model.result import Result
 from logger import logger
+from core.metric_sampler import MetricSampler
+from core.metric import Metric
+from core.sector import Sector
 
 
 logger = logger.get_logger('dex')
@@ -54,8 +55,8 @@ class Indexer:
         self.repo = None
         self.result = None
         self.language_statistics = None
+        self.sectors = None
         self.readme = None
-
         self.__start_time = None
 
     def __enter__(self):
@@ -69,6 +70,7 @@ class Indexer:
     def __exit__(self, type, value, traceback):
         try:
             rmtree(self.location)
+            # pass
         except OSError:
             pass
         self.repo = None
@@ -101,6 +103,7 @@ class Indexer:
         self.__start_time = time.time()
         self.extract_language_statistics()
         self.extract_readme()
+        # self.extract_metrics()
         self.process_results()
 
     def process_results(self):
@@ -117,7 +120,7 @@ class Indexer:
             },
             {
                 '$set': {
-                    'state': STATE.get('complete'),
+                    'state': 2,
                     'indexed_on': datetime.today(),
                     'index_duration': index_duration
                 }
@@ -131,7 +134,7 @@ class Indexer:
         self.result.set_statistics(self.language_statistics)
         self.result.set_fulltext(readme=self.readme)
 
-        # TODO: insert to db
+        # Store Metrics
 
         logger.info('\033[1;32mCompleted\033[0m {} in {}'
                     .format(self.url, index_duration))
@@ -140,6 +143,26 @@ class Indexer:
     #   DO_ METHODS
     #   Routines below do various indexing operations.
     #---------------------------------------------------------------------------
+
+    def extract_metrics(self):
+        """
+        Runs the MetricSampler to get all metrics such as additions, deletions
+        number of commits for each week in time of the repository.
+        :return:
+        """
+        sampler = MetricSampler(self.repo)
+        sampler.sample_all()
+        self.sectors = sampler.get_sectors()
+        # {
+        #   id: 90898,
+        #   additions: 0,
+        #   deletions: 0,
+        #   acivity: 0,
+        #   commits: 0,
+        #   timestamp: 0
+        # }
+        self.db_conn.metrics.remove({'_id': self.id})
+        self.db_conn.metrics.insert(self.sectors)
 
     def extract_language_statistics(self):
         """
@@ -199,36 +222,4 @@ class Indexer:
         """
         #TODO: Get license information
         pass
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

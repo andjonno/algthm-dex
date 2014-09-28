@@ -12,7 +12,6 @@ The worker is defined by worker.py which is the root execution of the process.
 import pika
 import sys
 import worker
-import feeder
 from shutil import rmtree
 from time import sleep
 from algthm.utils.file import dir_empty
@@ -93,30 +92,6 @@ def cool_off(duration=3, char='*'):
     print
 
 
-def create_index_session(db_conn):
-    """
-    Creates the session in the database.
-    :param db_conn: database connection
-    :return: ObjectId for session
-    """
-    session_id = None
-    try:
-        # reset repositories states, error counts, etc..
-        repositories = db_conn.repositories
-        sessions = db_conn.sessions
-
-        repositories.update({}, {'$set': {'error_count': 0,'state':
-            feeder.STATE.get('waiting'), 'comment': ''}},
-                              multi=True, upsert=True)
-        session_id = sessions.insert({'start_time': datetime.today(), 'total':
-            repositories.count()})
-
-    except Exception:
-        raise IndexerBootFailure('Failed to initialize session.')
-
-    return session_id
-
-
 def finish_session(db_conn, session_id):
     db_conn.sessions.update(
         {'_id': session_id},
@@ -143,7 +118,7 @@ def prepare_workspace(workspace):
 def welcome(working_directory):
     welcome = """
         .'   .;.    _
-   .-..'  .-.   `.,' '      DEX indexing module 0.0.3. Copyright 2014 Algthm.
+   .-..'  .-.   `.,' '      DEX indexing module 0.0.4. Copyright 2014 Algthm.
   :   ; .;.-'   ,'`.        Working Directory: [working_directory]
   `:::'`.`:::'-'    `._.    Log: [log_location]
 """
@@ -167,7 +142,7 @@ def main():
             if db_conn:
                 print 'done'
             else:
-                raise IndexerBootFailure("Could not connect to DB.")
+                raise IndexerBootFailure('Could not connect to DB.')
 
             print '> connecting to MQ @ {} ..'\
                 .format(cfg.settings.mq.connection.host),
@@ -178,7 +153,7 @@ def main():
                 if mq_conn:
                     print 'done'
             except pika.exceptions.AMQPConnectionError:
-                raise IndexerBootFailure("Could not connect to MQ.")
+                raise IndexerBootFailure('Could not connect to MQ.')
 
             print 'letting connections establish before testing.'
             cool_off(cfg.settings.general.cooling)
@@ -189,38 +164,28 @@ def main():
             else:
                 raise IndexerBootFailure('Algthm schema not defined in DB.')
 
-            print '> preparing indexing session ..',
-            session_id = create_index_session(db_conn)
-            if session_id:
-                print 'ID:{}'.format(session_id)
-
             print '> testing MQ connection ..',
             if test_mq_connection(mq_conn):
                 print 'ok'
                 print '> purging MQ ..',
                 mq_conn.channel().queue_delete(
-                    queue=cfg.settings.mq.indexing_q_name)
+                    queue=cfg.settings.mq.queue_name)
                 print 'ok'
             else:
-                raise IndexerBootFailure("MQ connection failed.")
+                raise IndexerBootFailure('MQ connection failed.')
 
             workers = initialize_workers(cfg.settings.general.workers,
                                          worker.target)
             print 'letting workers establish.'
             cool_off(cfg.settings.general.cooling)
 
-            print '> initialize feeder ..',
-            fdr = feeder.Feeder(session_id, db_conn, mq_conn)
-            if fdr:
-                print 'ok'
-            else:
-                raise IndexerBootFailure("Could not start the feeder.")
-
             #-------------------------------------------------------------------
             #   All Checks Complete - Run
             #-------------------------------------------------------------------
             print '> running ...'
-            fdr.feed_manager()
+            while True:
+                print '.',
+                sleep(5)
 
             # Presence of contents in the working directory denotes there are a
             # number of workers still processes jobs. Wait for directory to be
@@ -229,26 +194,15 @@ def main():
             while not dir_empty(working_directory):
                 print '.',
                 sleep(5)
-            print 'done!'
 
             cool_off(1)
-            fdr.report_failures()
 
-            # session.set(dict(finish_time=strftime('%Y-%m-%d %H:%M:%S'))).save()
-            print '> session finished'
-            finish_session(db_conn, session_id)
-
-            # debug
-            # TODO: take out this line for prod
-            break
-            db_conn.close()
-
-            print '> rebooting ..'
             for p in enumerate(workers):
                 try:
                     p[-1].terminate()
                 except RuntimeError:
                     pass
+            break
 
         except IndexerBootFailure as e:
             print e
