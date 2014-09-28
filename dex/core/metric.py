@@ -20,7 +20,7 @@ class Metric:
         return '{},{:=6} additions, {:=6} deletions, {:=6} commits, {:=6} activity @ {}'.format(self.commit.id, self.additions, -self.deletions,
                            self.commit_count, self.activity, self.timestamp)
 
-    def __dict__(self):
+    def serialize(self):
         return dict(
             commit=self.commit.id,
             additions=self.additions,

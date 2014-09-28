@@ -15,6 +15,7 @@ import pygit2
 from algthm.utils.file import match_in_dir
 from algthm.utils.string import normalize_string
 from bson.objectid import ObjectId
+from bson.dbref import DBRef
 from cfg.loader import cfg
 from core.db import MongoConnection
 from core.exceptions.indexer import IndexerDependencyFailure
@@ -24,8 +25,6 @@ from core.model.languages import Languages
 from core.model.result import Result
 from logger import logger
 from core.metric_sampler import MetricSampler
-from core.metric import Metric
-from core.sector import Sector
 
 
 logger = logger.get_logger('dex')
@@ -55,7 +54,6 @@ class Indexer:
         self.repo = None
         self.result = None
         self.language_statistics = None
-        self.sectors = None
         self.readme = None
         self.__start_time = None
 
@@ -103,7 +101,7 @@ class Indexer:
         self.__start_time = time.time()
         self.extract_language_statistics()
         self.extract_readme()
-        # self.extract_metrics()
+        self.extract_metrics()
         self.process_results()
 
     def process_results(self):
@@ -152,17 +150,21 @@ class Indexer:
         """
         sampler = MetricSampler(self.repo)
         sampler.sample_all()
-        self.sectors = sampler.get_sectors()
-        # {
+        metrics = sampler.get_metrics()
+        # [{
         #   id: 90898,
         #   additions: 0,
         #   deletions: 0,
-        #   acivity: 0,
+        #   activity: 0,
         #   commits: 0,
         #   timestamp: 0
-        # }
-        self.db_conn.metrics.remove({'_id': self.id})
-        self.db_conn.metrics.insert(self.sectors)
+        # }, { ... }]
+        self.db_conn.metrics.remove({'repository.$id': ObjectId(str(self.id))})
+        for sample in metrics:
+            sample = sample.serialize()
+            sample['commit'] = str(sample['commit'])
+            sample['repository'] = DBRef('repositories', ObjectId(str(self.id)))
+            self.db_conn.metrics.insert(sample)
 
     def extract_language_statistics(self):
         """

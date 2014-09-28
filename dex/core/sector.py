@@ -33,16 +33,16 @@ class Sector:
         """
         return self.__start >= query > self.__end
 
-    def add_object(self, object, time):
+    def add_object(self, _object, time):
         """
         Adds the given object to the sector. The object is associated with a time.
         To simplify, a time is passed in to get the objects timestamp.
-        :param object:
+        :param _object:
         :param time:
         :return: None
         """
         if self.includes(time):
-            self.__objects.append(object)
+            self.__objects.append(_object)
             return True
         return False
 

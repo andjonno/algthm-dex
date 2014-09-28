@@ -12,7 +12,7 @@ necessary to remove it from the rotation and black listed.
 """
 from bson import ObjectId
 from elasticsearch import ElasticsearchException
-
+import traceback
 import pika
 from pika import exceptions
 import json
@@ -61,6 +61,7 @@ class Worker(object):
             with Indexer(self.id, m['id'], m['url']) as indexer:
                 try:
                     indexer.load().index()
+
                 except ExternalSystemException as err:
                     # should be investigated.
                     MongoConnection().get_db().system_errors.insert({
@@ -69,7 +70,9 @@ class Worker(object):
                         'timestamp': datetime.today(),
                         'task': 'indexing {}'.format(m['id'])
                     })
-                except (RepositoryCloneFailure, StatisticsUnavailable, IndexerDependencyFailure) as err:
+
+                except (RepositoryCloneFailure, StatisticsUnavailable,
+                        IndexerDependencyFailure) as err:
                     # Repository specific failure
                     self.db_conn.repositories.update(
                         {
@@ -94,6 +97,10 @@ class Worker(object):
 
                 except OSError as err:
                     logger.error(err)
+
+                except Exception as e:
+                    print 'Worker failed ', e
+                    traceback.print_exc()
 
             ch.basic_ack(delivery_tag=method.delivery_tag)
 

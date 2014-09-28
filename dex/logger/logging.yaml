@@ -24,7 +24,7 @@ handlers:
 loggers:
     dex:
         level: DEBUG
-        handlers: [file_handler]
+        handlers: [file_handler, console_handler]
         propagate: no
 
 root:

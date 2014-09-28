@@ -3,7 +3,7 @@
 import pygit2
 import datetime
 from metric import Metric
-import sector as sec
+from sector import Sector
 from Queue import PriorityQueue, Empty
 
 
@@ -39,19 +39,18 @@ class MetricSampler:
         self.head = self.r.get(self.r.head.target)
         self.__load_commits()
         self.__sectors = []
+        self.__metrics = []
 
     def sample_all(self):
         """
         Runs the process to sample the repository.
         :return:
         """
-        samples = []
         self.__sectors = self.__generate_sectors()
 
         for sector in self.__sectors:
             commits_in_sector = sector.get_objects()
             commits_count = len(commits_in_sector)
-            print 'running sector'
 
             if commits_count:
                 m = Metric()
@@ -68,13 +67,10 @@ class MetricSampler:
                 m.timestamp = datetime.datetime.fromtimestamp(
                     last_commit.commit_time)
 
-                samples.append(m)
+                self.__metrics.append(m)
 
-        for s in samples:
-            print s
-
-    def get_sectors(self):
-        return self.__sectors
+    def get_metrics(self):
+        return self.__metrics
 
     def __score(self, a, b, commits_for_sector):
         """
@@ -86,15 +82,18 @@ class MetricSampler:
         """
         additions = 0
         deletions = 0
-        diff = self.r.diff(a, b)
+        try:
+            diff = self.r.diff(a, b)
 
-        for patch in diff:
-            additions += patch.additions
-            deletions += patch.deletions
+            for patch in diff:
+                additions += patch.additions
+                deletions += patch.deletions
 
-        activity = 1 / commits_for_sector + (additions + deletions)
+            activity = 1 / commits_for_sector + (additions + deletions)
 
-        return activity, additions, deletions
+            return activity, additions, deletions
+        except ValueError:
+            return 0, 0, 0
 
     def __total_commits(self):
         return len(self.commits)
@@ -123,22 +122,22 @@ class MetricSampler:
         :return: list
         """
         sectors = list()
-        sec = None
+        sector = None
         x = 0
         num_commits = len(self.commits)
         while x < num_commits:
             commit = self.commits[x]
-            if not sec:
-                sec = sec.Sector(commit.commit_time,
+            if not sector:
+                sector = Sector(commit.commit_time,
                                 commit.commit_time - RESOLUTION)
 
-            if sec.add_object(commit, commit.commit_time):
+            if sector.add_object(commit, commit.commit_time):
                 x += 1
             else:
-                sectors.append(sec)
-                sec = None
+                sectors.append(sector)
+                sector = None
 
         # Add last sector
-        sectors.append(sec)
+        sectors.append(sector)
 
         return sectors
