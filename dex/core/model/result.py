@@ -15,9 +15,7 @@ class Result:
     # serial, is the datastructure holding the object which is sent to the index.
     __serial = dict(
         text=dict(
-            readme=None,
-            license=None,
-            changelog=None,
+            readme=None
         ),
         repository=dict(
             name=None,
@@ -59,8 +57,6 @@ class Result:
         :return: None
         """
         self.__serial['text']['readme'] = readme
-        self.__serial['text']['license'] = license
-        self.__serial['text']['changelog'] = changelog
 
     def serialize(self):
         return self.__serial

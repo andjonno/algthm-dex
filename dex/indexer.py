@@ -211,8 +211,13 @@ class Indexer:
         Similarly, works for the absolute case too: "rails web framework".
         """
         try:
-            r = re.compile(r'^README', re.IGNORECASE)
-            readme_location = match_in_dir(r, self.location)[0]
+            # prefer README.md
+            r = re.compile(r'^README.md', re.IGNORECASE)
+            try:
+                readme_location = match_in_dir(r, self.location)[0]
+            except Exception:
+                r = re.compile(r'^README', re.IGNORECASE)
+                readme_location = match_in_dir(r, self.location)[0]
 
             f = open(readme_location, 'r')
             self.readme = normalize_string(f.read())
