@@ -1,7 +1,7 @@
 
 general:
   env: dev
-  workers: 64
+  workers: 24
   directory: /Users/jon/tmp/repositories/
   welcome: cfg/welcome
   cooling: 1

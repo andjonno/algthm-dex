@@ -177,10 +177,6 @@ def main():
             print '> testing MQ connection ..',
             if test_mq_connection(mq_conn):
                 print 'ok'
-                print '> purging MQ ..',
-                mq_conn.channel().queue_delete(
-                    queue=cfg.settings.mq.queue_name)
-                print 'ok'
             else:
                 raise IndexerBootFailure('MQ connection failed.')
 

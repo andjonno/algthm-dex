@@ -4,7 +4,7 @@ import pygit2
 import datetime
 from metric import Metric
 from sector import Sector
-from Queue import PriorityQueue, Empty
+from dex.core.model.contributor import Contributor
 
 
 ONE_WEEK = 604800
@@ -40,8 +40,9 @@ class MetricSampler:
         self.__load_commits()
         self.__sectors = []
         self.__metrics = []
+        self.__contributors = []
 
-    def sample_all(self):
+    def sample_sectors(self):
         """
         Runs the process to sample the repository.
         :return:
@@ -69,8 +70,34 @@ class MetricSampler:
 
                 self.__metrics.append(m)
 
+    def sample_contributors(self):
+        """
+        Extracts all unique authors from the Commit objects.
+        :return:
+        """
+
+        # Store in hashmap
+        contributors = dict()
+        for commit in self.commits:
+            try:
+                contributors[commit.author.email]["count"] += 1
+            except KeyError:
+                contributors[commit.author.email] = dict(
+                    name=commit.author.name,
+                    count=1
+                )
+
+        for k in contributors.iterkeys():
+            self.__contributors.append(Contributor(name=contributors[k]["name"],
+                                            email=k,
+                                            count=contributors[k]["count"]))
+        return self.__contributors
+
     def get_metrics(self):
         return self.__metrics
+
+    def get_contributors(self):
+        return self.__contributors
 
     def __score(self, a, b, commits_for_sector):
         """

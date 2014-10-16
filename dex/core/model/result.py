@@ -20,32 +20,30 @@ class Result:
         repository=dict(
             name=None,
             url=None,
-            languages=dict(
-                common=None,
-                secondary=list()
-            )
+            languages=list()
         ),
         processed=None
     )
 
     def __init__(self, name, url):
-        self.__serial['repository']['name'] = name
-        self.__serial['repository']['url'] = url
-        self.__serial['processed'] = datetime.today()
+        self.__serial["repository"]["name"] = name
+        self.__serial["repository"]["url"] = url
+        self.__serial["processed"] = datetime.today()
 
     def set_statistics(self, statistics):
         """
-        Takes a repository statistics object, serializable, appropriately binding it to the object.
+        Takes a repository statistics object, serializable, appropriately
+        binding it to the object.
 
         :param statistics: RepositoryStatistic
         :return: None
         """
         languages = statistics.get_languages()
         common = statistics.get_common_language()
-        self.__serial['repository']['languages']['common'] = common.serialize()
+        self.__serial["repository"]["languages"].append(common.serialize())
         for language in languages:
             if language.name != common.name:
-                self.__serial['repository']['languages']['secondary'].append(language.serialize())
+                self.__serial["repository"]["languages"].append(language.serialize())
 
     def set_fulltext(self, readme='', license='', changelog=''):
         """
@@ -56,7 +54,7 @@ class Result:
         :param changelog: String
         :return: None
         """
-        self.__serial['text']['readme'] = readme
+        self.__serial["text"]["readme"] = readme
 
     def serialize(self):
         return self.__serial

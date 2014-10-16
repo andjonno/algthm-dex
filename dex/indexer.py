@@ -103,6 +103,7 @@ class Indexer:
         self.extract_language_statistics()
         self.extract_readme()
         self.extract_metrics()
+
         self.process_results()
 
     def process_results(self):
@@ -153,22 +154,33 @@ class Indexer:
         :return:
         """
         sampler = MetricSampler(self.repo)
-        sampler.sample_all()
+        sampler.sample_sectors()
+
         metrics = sampler.get_metrics()
-        # [{
-        #   id: 90898,
-        #   additions: 0,
-        #   deletions: 0,
-        #   activity: 0,
-        #   commits: 0,
-        #   timestamp: 0
-        # }, { ... }]
-        self.db_conn.metrics.remove({'repository.$id': ObjectId(str(self.id))})
+        self.db_conn.metrics.remove({"repository.$id": ObjectId(str(self.id))})
+        bulk_sample = []
         for sample in metrics:
             sample = sample.serialize()
-            sample['commit'] = str(sample['commit'])
-            sample['repository'] = DBRef('repositories', ObjectId(str(self.id)))
-            self.db_conn.metrics.insert(sample)
+            sample["commit"] = str(sample["commit"])
+            sample["repository"] = DBRef("repositories", ObjectId(str(self.id)))
+            bulk_sample.append(sample)
+        self.db_conn.metrics.insert(bulk_sample)
+
+        # Remove all old records
+        self.db_conn.contributions.remove({"repository.$id":
+                                              ObjectId(str(self.id))})
+
+        # Use a bulk insertion to minimise network ops.
+        bulk = []
+        contributors = sampler.sample_contributors()
+        for contributor in contributors:
+            bulk.append(dict(
+                email=contributor.get_email(),
+                contributions=contributor.get_count(),
+                repository=DBRef(collection="repositories",
+                                 id=ObjectId(str(self.id)))
+            ))
+        self.db_conn.contributions.insert(bulk)
 
     def extract_language_statistics(self):
         """
@@ -186,8 +198,8 @@ class Indexer:
         try:
             dn = open(devnull, 'w')
             call(['cloc', self.location, '--yaml', '--report-file={}'.format(
-                path.join(self.location, CLOC_OUTPUT_FILE))],
-                 stdout=dn, stderr=dn)
+                path.join(self.location, CLOC_OUTPUT_FILE))], stdout=dn,
+                 stderr=dn)
             dn.close()
         except OSError:
             raise IndexerDependencyFailure('`cloc` application was not found '
@@ -215,6 +227,7 @@ class Indexer:
             r = re.compile(r'^README.md', re.IGNORECASE)
             try:
                 readme_location = match_in_dir(r, self.location)[0]
+
             except Exception:
                 r = re.compile(r'^README', re.IGNORECASE)
                 readme_location = match_in_dir(r, self.location)[0]
@@ -222,6 +235,7 @@ class Indexer:
             f = open(readme_location, 'r')
             self.readme = normalize_string(f.read())
             f.close()
+
         except Exception:
             pass  # no readme
 
