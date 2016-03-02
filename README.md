@@ -1,6 +1,6 @@
             .'   .;.    _
        .-..'  .-.   `.,' '      
-      :   ; .;.-'   ,'`.        DEX indexing module 0.0.4. Copyright 2014 Algthm.
+      :   ; .;.-'   ,'`.        DEX indexing module 0.0.4. MIT License
       `:::'`.`:::'-'    `._.    
 
 Multiprocess module for repository discovery and indexing.
