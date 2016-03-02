@@ -1,3 +1,8 @@
+        .'   .;.    _
+   .-..'  .-.   `.,' '      
+  :   ; .;.-'   ,'`.        DEX indexing module 0.0.4. Copyright 2014 Algthm.
+  `:::'`.`:::'-'    `._.    
+
 Multiprocess module for repository discovery and indexing.
 
 This is a core component in the Algthm architecture, optimized for commodity hardware in cloud environments. The
